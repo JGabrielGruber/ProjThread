@@ -14,7 +14,8 @@
     "build": "npm run build:app && npm run build:admin",
     "deploy": "npm run build && wrangler deploy",
     "test": "node --test --experimental-strip-types src/lib/*.test.ts src/worker/*.test.ts",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "seed:local": "wrangler d1 execute projthread --local --file=seeds/local.sql"
   },
   "dependencies": {
     "vue": "^3.5.41",

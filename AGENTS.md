@@ -6,7 +6,7 @@ Read this file first after compact. It is the project map, not the archive.
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie on `/api/*` and WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki**) = our components, tokenized Grok/X-sharp skin (no hardcoded colors). **PWA config + super-admin** = PrimeVue (gospel OK). No DataGrid Pro; dialogs like dotproj. Daisy is not the kit. Nord rejected.  
-**Now:** foundation shipped on wrangler. Next = catalog (not written). See `docs/STATUS.md`.
+**Now:** catalog plan (kanban + membership). See `docs/STATUS.md`.
 
 ## Read next
 
@@ -18,13 +18,13 @@ Do **not** treat the Grok Chat draft as a spec.
 | Chat draft (spirit, unverified) | `docs/context/2026-08-26-chat-draft.md` |
 | Corrected working model + open questions | `docs/context/2026-08-26-working-model.md` |
 | **v1 spec** | `docs/superpowers/specs/2026-08-26-projthread-v1-design.md` |
-| Open plan | `docs/superpowers/plans/2026-08-26-projthread-foundation.md` |
+| Open plan | `docs/superpowers/plans/2026-08-26-projthread-catalog.md` |
 | Plan index | `docs/superpowers/plans/2026-08-26-projthread-v1.md` |
 | Ancestor: task/org model | `~/Projects/dotproj` (`portal/portal/workspace/models/`) |
 | Ancestor: knowledge graph | `~/Projects/Knowkey` (`server/knowkey/core/models/`) |
 | Cloudflare free-tier discipline | `~/Projects/PalmEngine/blog/AGENTS.md` |
 
-Spec is approved. Implement **only** the open plan in `docs/STATUS.md` (foundation first). Index: `docs/superpowers/plans/2026-08-26-projthread-v1.md`.
+Spec is approved. Implement **only** the open plan in `docs/STATUS.md`. Index: `docs/superpowers/plans/2026-08-26-projthread-v1.md`.
 
 ## Tree (today)
 

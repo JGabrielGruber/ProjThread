@@ -7,7 +7,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | Plan | File | Ships |
 | --- | --- | --- |
 | **1. Foundation** | `2026-08-26-projthread-foundation.md` | One Worker, assets, D1, Access, session vending, `/api/me`, empty PWA “no session” |
-| 2. Catalog | *(write after 1)* | Org, workspace, project forest, stages, work_item CRUD, kanban |
+| 2. Catalog | `2026-08-26-projthread-catalog.md` | Org, workspace, project forest, stages, work_item CRUD, kanban |
 | 3. Room | *(write after 2)* | Durable Object + hibernatable WS, chat tape, resume `last_seq` |
 | 4. Activity | *(write after 3)* | D1-then-DO events, interleaved seq, Activity-only filter |
 | 5. Wiki | *(write after 4)* | Nodes, Markdown reader, links, promote; blob columns unused |
@@ -15,4 +15,4 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 7. Skin + PWA | *(write after 6)* | Tokenized Grok/X-sharp, installability |
 | 8. Deploy | *(write after 7)* | `APP_ORIGIN`, Access, remote D1, domain as config |
 
-**Now:** foundation shipped; next = catalog (not written).
+**Now:** execute plan 2 (catalog) only.

@@ -1,0 +1,22 @@
+:root {
+  --bg: #0c0e12;
+  --fg: #e8eaed;
+  --muted: #8b919a;
+  --accent: #7aa2f7;
+  --danger: #f7768e;
+  --radius: 0.5rem;
+  --font: ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+}

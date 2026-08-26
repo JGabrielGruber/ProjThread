@@ -11,6 +11,7 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     outDir: resolve(root, "../../dist"),
+    // npm run build must run app then admin: emptying ../../dist deletes dist/admin.
     emptyOutDir: true,
   },
 });

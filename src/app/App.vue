@@ -11,12 +11,17 @@ const principal = ref<Principal | null>(null);
 const loaded = ref(false);
 
 onMounted(async () => {
-  const res = await fetch("/api/me", { credentials: "include" });
-  if (res.ok) {
-    const body = (await res.json()) as { principal: Principal };
-    principal.value = body.principal;
+  try {
+    const res = await fetch("/api/me", { credentials: "include" });
+    if (res.ok) {
+      const body = (await res.json()) as { principal: Principal };
+      principal.value = body.principal;
+    }
+  } catch {
+    principal.value = null;
+  } finally {
+    loaded.value = true;
   }
-  loaded.value = true;
 });
 </script>
 

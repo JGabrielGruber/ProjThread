@@ -16,47 +16,59 @@ const error = ref("");
 
 async function load() {
   error.value = "";
-  const res = await fetch("/api/admin/principals", { credentials: "include" });
-  if (!res.ok) {
+  try {
+    const res = await fetch("/api/admin/principals", { credentials: "include" });
+    if (!res.ok) {
+      error.value = "Could not load principals";
+      return;
+    }
+    const body = (await res.json()) as { principals: Principal[] };
+    principals.value = body.principals;
+  } catch {
     error.value = "Could not load principals";
-    return;
   }
-  const body = (await res.json()) as { principals: Principal[] };
-  principals.value = body.principals;
 }
 
 async function create() {
   error.value = "";
-  const res = await fetch("/api/admin/principals", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      display_name: displayName.value,
-      type: type.value,
-    }),
-  });
-  if (!res.ok) {
+  try {
+    const res = await fetch("/api/admin/principals", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        display_name: displayName.value,
+        type: type.value,
+      }),
+    });
+    if (!res.ok) {
+      error.value = "Create failed";
+      return;
+    }
+    displayName.value = "";
+    await load();
+  } catch {
     error.value = "Create failed";
-    return;
   }
-  displayName.value = "";
-  await load();
 }
 
 async function mint(principalId: string) {
   error.value = "";
-  const res = await fetch("/api/admin/sessions", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ principal_id: principalId }),
-  });
-  if (!res.ok) {
+  try {
+    const res = await fetch("/api/admin/sessions", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ principal_id: principalId }),
+    });
+    if (!res.ok) {
+      error.value = "Mint failed";
+      return;
+    }
+    location.href = "/";
+  } catch {
     error.value = "Mint failed";
-    return;
   }
-  location.href = "/";
 }
 
 onMounted(load);

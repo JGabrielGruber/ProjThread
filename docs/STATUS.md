@@ -2,9 +2,9 @@
 
 Update this file when a slice lands. Do not put slice history in root `AGENTS.md`.
 
-**Live:** local wrangler — Access admin, session cookie, GET /api/me  
-**Now:** catalog plan (kanban + membership; no Room)  
-**Plan:** `docs/superpowers/plans/2026-08-26-projthread-catalog.md`  
+**Live:** local wrangler — Farm seed, membership, kanban (no moves, no room)  
+**Now:** next plan = room (not written)  
+**Plan:** `docs/superpowers/plans/2026-08-26-projthread-catalog.md` (landed)  
 **Index:** `docs/superpowers/plans/2026-08-26-projthread-v1.md`  
 **Spec:** `docs/superpowers/specs/2026-08-26-projthread-v1-design.md`
 

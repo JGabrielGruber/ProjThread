@@ -1,36 +1,90 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import KanbanBoard from "./KanbanBoard.vue";
+import { useSessionStore, type Membership } from "./stores/session.ts";
+import type { Project } from "./stores/board.ts";
 
-type Principal = {
-  id: string;
-  type: string;
-  display_name: string;
-};
+const session = useSessionStore();
+const route = useRoute();
+const router = useRouter();
 
-const principal = ref<Principal | null>(null);
-const loaded = ref(false);
-
-onMounted(async () => {
-  try {
-    const res = await fetch("/api/me", { credentials: "include" });
-    if (res.ok) {
-      const body = (await res.json()) as { principal: Principal };
-      principal.value = body.principal;
-    }
-  } catch {
-    principal.value = null;
-  } finally {
-    loaded.value = true;
-  }
+onMounted(() => {
+  void session.loadMe();
 });
+
+function queryString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+const workspaceQuery = computed(() => queryString(route.query.workspace));
+const projectQuery = computed(() => queryString(route.query.project));
+const hasBoardQuery = computed(
+  () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
+);
+
+async function fillMissingQuery(memberships: Membership[]): Promise<void> {
+  const workspaceMissing = !workspaceQuery.value;
+  const projectMissing = !projectQuery.value;
+  if (!workspaceMissing && !projectMissing) return;
+  if (memberships.length === 0) return;
+
+  const workspaceId = workspaceQuery.value ?? memberships[0].workspace_id;
+  let projectId = projectQuery.value;
+  if (!projectId) {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/projects`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as { projects: Project[] };
+      const root = body.projects.find((p) => p.parent_id == null);
+      if (!root) return;
+      projectId = root.id;
+    } catch {
+      return;
+    }
+  }
+
+  const query = { ...route.query };
+  if (workspaceMissing) query.workspace = workspaceId;
+  if (projectMissing) query.project = projectId;
+  if (
+    query.workspace === route.query.workspace &&
+    query.project === route.query.project
+  ) {
+    return;
+  }
+  await router.replace({ query });
+}
+
+watch(
+  () => [
+    session.loaded,
+    session.principal,
+    session.memberships,
+    workspaceQuery.value,
+    projectQuery.value,
+  ],
+  () => {
+    if (!session.loaded || !session.principal || session.memberships.length === 0) {
+      return;
+    }
+    void fillMissingQuery(session.memberships);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
-  <main v-if="loaded">
-    <h1 v-if="!principal">No session</h1>
+  <main v-if="session.loaded">
+    <h1 v-if="!session.principal">No session</h1>
+    <h1 v-else-if="session.memberships.length === 0">No workspace</h1>
     <section v-else>
-      <p class="name">{{ principal.display_name }}</p>
-      <p class="type">{{ principal.type }}</p>
+      <header>
+        <p class="who">{{ session.principal.display_name }}</p>
+      </header>
+      <KanbanBoard v-if="hasBoardQuery" />
     </section>
   </main>
 </template>
@@ -48,13 +102,13 @@ h1 {
   font-size: 1.5rem;
 }
 
-.name {
-  margin: 0 0 0.25rem;
-  font-size: 1.25rem;
+header {
+  margin-bottom: 1rem;
 }
 
-.type {
+.who {
   margin: 0;
+  font-size: 0.9rem;
   color: var(--muted);
 }
 </style>

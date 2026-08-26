@@ -1,0 +1,29 @@
+{
+  "name": "projthread",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:app": "vite --config src/app/vite.config.ts",
+    "dev:admin": "vite --config src/admin/vite.config.ts",
+    "build:app": "vite build --config src/app/vite.config.ts",
+    "build:admin": "vite build --config src/admin/vite.config.ts",
+    "build": "npm run build:app && npm run build:admin",
+    "deploy": "npm run build && wrangler deploy",
+    "test": "node --test --experimental-strip-types src/lib/*.test.ts src/worker/*.test.ts",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "vue": "^3.5.41",
+    "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "wrangler": "^4.126.0"
+  }
+}

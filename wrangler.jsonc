@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "projthread",
+  "compatibility_date": "2026-08-26",
+  "main": "src/worker/index.ts",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/admin", "/admin/*"]
+  },
+  "vars": {
+    "APP_ORIGIN": "http://127.0.0.1:8787"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "projthread",
+      "database_id": "local",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

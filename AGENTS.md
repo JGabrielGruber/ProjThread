@@ -6,7 +6,7 @@ Read this file first after compact. It is the project map, not the archive.
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie on `/api/*` and WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki**) = our components, tokenized Grok/X-sharp skin (no hardcoded colors). **PWA config + super-admin** = PrimeVue (gospel OK). No DataGrid Pro; dialogs like dotproj. Daisy is not the kit. Nord rejected.  
-**Now:** orientation. No Worker, no schema, no UI.
+**Now:** foundation shipped on wrangler. Next = catalog (not written). See `docs/STATUS.md`.
 
 ## Read next
 
@@ -31,7 +31,7 @@ Spec is approved. Implement **only** the open plan in `docs/STATUS.md` (foundati
 | Path | Job |
 | --- | --- |
 | `AGENTS.md` | This map |
-| `docs/STATUS.md` | Slice table. Empty until v1 spec exists. |
+| `docs/STATUS.md` | What is live / what to start. |
 | `docs/context/` | Session-recoverable notes. Not specs. |
 | `docs/superpowers/specs/` | Future: one spec per version |
 | `docs/superpowers/plans/` | Future: slice plans |

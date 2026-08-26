@@ -1,5 +1,6 @@
 import { authorizeAdmin, adminForbidden } from "./access.ts";
 import { handleAdmin } from "./admin.ts";
+import { handleCatalog } from "./catalog-http.ts";
 import { d1CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import { handleMe } from "./me.ts";
@@ -19,6 +20,13 @@ export default {
 
     if (url.pathname === "/api/me") {
       return handleMe(request, env, store, catalog);
+    }
+
+    if (
+      url.pathname.startsWith("/api/workspaces") ||
+      url.pathname.startsWith("/api/work-items")
+    ) {
+      return handleCatalog(request, env, store, catalog);
     }
 
     if (url.pathname.startsWith("/api/")) {

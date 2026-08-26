@@ -4,6 +4,7 @@ import {
   serializeSessionCookie,
 } from "../lib/cookies.ts";
 import { newId } from "../lib/id.ts";
+import type { CatalogStore, TenantBundle } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import {
   mintSession,
@@ -22,9 +23,18 @@ export async function handleAdmin(
   request: Request,
   env: Env,
   store: SessionStore,
+  catalog: CatalogStore,
 ): Promise<Response> {
   const { pathname } = new URL(request.url);
   const method = request.method;
+
+  if (pathname === "/api/admin/organizations" && method === "GET") {
+    return Response.json({ organizations: await catalog.listOrganizations() });
+  }
+
+  if (pathname === "/api/admin/organizations" && method === "POST") {
+    return createOrganization(request, catalog);
+  }
 
   if (pathname === "/api/admin/principals" && method === "GET") {
     return Response.json({ principals: await store.listPrincipals() });
@@ -44,6 +54,66 @@ export async function handleAdmin(
   }
 
   return Response.json({ error: "not_found" }, { status: 404 });
+}
+
+async function createOrganization(
+  request: Request,
+  catalog: CatalogStore,
+): Promise<Response> {
+  const body = await readJson(request);
+  if (!isRecord(body)) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+  const organizationId = newId();
+  const workspaceId = newId();
+  const projectId = newId();
+  const principalId = newId();
+  const bundle: TenantBundle = {
+    organization: { id: organizationId, name, created_at: now },
+    workspace: {
+      id: workspaceId,
+      organization_id: organizationId,
+      name,
+      created_at: now,
+    },
+    project: {
+      id: projectId,
+      workspace_id: workspaceId,
+      organization_id: organizationId,
+      parent_id: null,
+      name,
+      created_at: now,
+    },
+    principal: {
+      id: principalId,
+      type: "human",
+      display_name: name,
+      created_at: now,
+    },
+    membership: {
+      workspace_id: workspaceId,
+      principal_id: principalId,
+      role: "owner",
+    },
+  };
+  await catalog.insertTenantBundle(bundle);
+
+  return Response.json(
+    {
+      organization: { id: organizationId, name },
+      workspace: { id: workspaceId, name },
+      project: { id: projectId, name, parent_id: null },
+      principal: { id: principalId, type: "human", display_name: name },
+    },
+    { status: 201 },
+  );
 }
 
 async function createPrincipal(

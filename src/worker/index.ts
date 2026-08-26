@@ -15,7 +15,7 @@ export default {
 
     if (url.pathname.startsWith("/api/admin")) {
       if (!(await authorizeAdmin(request, env))) return adminForbidden(request);
-      return handleAdmin(request, env, store);
+      return handleAdmin(request, env, store, catalog);
     }
 
     if (url.pathname === "/api/me") {

@@ -75,6 +75,7 @@ function memoryStore(): SessionStore {
 async function mintCookie(
   store: SessionStore,
 ): Promise<{ principal: Principal; cookie: string; session: SessionRow }> {
+  const catalog = memoryCatalog();
   const created = await handleAdmin(
     new Request(`${ORIGIN}/api/admin/principals`, {
       method: "POST",
@@ -83,6 +84,7 @@ async function mintCookie(
     }),
     env,
     store,
+    catalog,
   );
   const principal = (await created.json()) as Principal;
   const minted = await handleAdmin(
@@ -93,6 +95,7 @@ async function mintCookie(
     }),
     env,
     store,
+    catalog,
   );
   const { session } = (await minted.json()) as { session: SessionRow };
   const setCookie = minted.headers.get("set-cookie");
@@ -178,6 +181,7 @@ describe("handleMe", () => {
       }),
       env,
       store,
+      memoryCatalog(),
     );
     assert.equal(revoked.status, 204);
 

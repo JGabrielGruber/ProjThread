@@ -129,6 +129,26 @@ function memoryCatalog(): MemoryCatalog {
   };
 }
 
+function unused(): never {
+  throw new Error("unused");
+}
+
+function stubCatalog(): CatalogStore {
+  return {
+    listMemberships: unused,
+    getMembership: unused,
+    listProjects: unused,
+    getProject: unused,
+    listStages: unused,
+    listWorkItems: unused,
+    getWorkItem: unused,
+    insertWorkItem: unused,
+    updateWorkItemTitle: unused,
+    insertTenantBundle: unused,
+    listOrganizations: unused,
+  };
+}
+
 function memoryStore(): SessionStore {
   const principals = new Map<string, Principal>();
   const sessions = new Map<string, SessionRow>();
@@ -163,6 +183,7 @@ function memoryStore(): SessionStore {
 async function mintCookie(
   store: SessionStore,
 ): Promise<{ principal: Principal; cookie: string }> {
+  const catalog = stubCatalog();
   const created = await handleAdmin(
     new Request(`${ORIGIN}/api/admin/principals`, {
       method: "POST",
@@ -171,6 +192,7 @@ async function mintCookie(
     }),
     env,
     store,
+    catalog,
   );
   const principal = (await created.json()) as Principal;
   const minted = await handleAdmin(
@@ -181,6 +203,7 @@ async function mintCookie(
     }),
     env,
     store,
+    catalog,
   );
   const setCookie = minted.headers.get("set-cookie");
   assert.ok(setCookie);

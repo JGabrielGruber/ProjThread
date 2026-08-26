@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { handleAdmin } from "./admin.ts";
+import {
+  DEFAULT_STAGES,
+  type CatalogStore,
+  type Membership,
+  type ProjectRow,
+  type StageRow,
+} from "./catalog.ts";
 import type { Env } from "./env.ts";
 import {
   type Principal,
@@ -11,6 +18,110 @@ import { COOKIE_NAME } from "../lib/cookies.ts";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const env = { APP_ORIGIN: ORIGIN } as Env;
+
+function unused(): never {
+  throw new Error("unused");
+}
+
+function stubCatalog(): CatalogStore {
+  return {
+    listMemberships: unused,
+    getMembership: unused,
+    listProjects: unused,
+    getProject: unused,
+    listStages: unused,
+    listWorkItems: unused,
+    getWorkItem: unused,
+    insertWorkItem: unused,
+    updateWorkItemTitle: unused,
+    insertTenantBundle: unused,
+    listOrganizations: unused,
+  };
+}
+
+function memoryCatalog(): CatalogStore {
+  const organizations = new Map<
+    string,
+    { id: string; name: string; created_at: string }
+  >();
+  const workspaces = new Map<
+    string,
+    { id: string; organization_id: string; name: string; created_at: string }
+  >();
+  const memberships = new Map<
+    string,
+    { workspace_id: string; principal_id: string; role: "owner" | "member" }
+  >();
+  const stages = new Map<string, StageRow>();
+  const projects = new Map<string, ProjectRow & { created_at: string }>();
+
+  function membershipKey(workspaceId: string, principalId: string): string {
+    return `${workspaceId}:${principalId}`;
+  }
+
+  function toMembership(
+    workspaceId: string,
+    principalId: string,
+  ): Membership | null {
+    const row = memberships.get(membershipKey(workspaceId, principalId));
+    if (!row) return null;
+    const workspace = workspaces.get(workspaceId);
+    if (!workspace) return null;
+    const organization = organizations.get(workspace.organization_id);
+    if (!organization) return null;
+    return {
+      organization_id: organization.id,
+      organization_name: organization.name,
+      workspace_id: workspace.id,
+      workspace_name: workspace.name,
+      role: row.role,
+    };
+  }
+
+  return {
+    async listMemberships(principalId) {
+      const out: Membership[] = [];
+      for (const row of memberships.values()) {
+        if (row.principal_id !== principalId) continue;
+        const m = toMembership(row.workspace_id, principalId);
+        if (m) out.push(m);
+      }
+      return out;
+    },
+    getMembership: unused,
+    listProjects: unused,
+    getProject: unused,
+    listStages: unused,
+    listWorkItems: unused,
+    getWorkItem: unused,
+    insertWorkItem: unused,
+    updateWorkItemTitle: unused,
+    async insertTenantBundle(b) {
+      organizations.set(b.organization.id, { ...b.organization });
+      workspaces.set(b.workspace.id, { ...b.workspace });
+      for (const stage of DEFAULT_STAGES) {
+        const row: StageRow = {
+          workspace_id: b.workspace.id,
+          key: stage.key,
+          label: stage.label,
+          position: stage.position,
+        };
+        stages.set(`${row.workspace_id}:${row.key}`, row);
+      }
+      projects.set(b.project.id, { ...b.project });
+      memberships.set(
+        membershipKey(b.membership.workspace_id, b.membership.principal_id),
+        { ...b.membership },
+      );
+    },
+    async listOrganizations() {
+      return [...organizations.values()].map((o) => ({
+        id: o.id,
+        name: o.name,
+      }));
+    },
+  };
+}
 
 function memoryStore(): SessionStore {
   const principals = new Map<string, Principal>();
@@ -61,6 +172,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
 
     assert.equal(created.status, 201);
@@ -74,6 +186,7 @@ describe("handleAdmin", () => {
       adminRequest("/api/admin/principals"),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(listed.status, 200);
     const body = (await listed.json()) as { principals: Principal[] };
@@ -90,6 +203,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(badType.status, 400);
     assert.deepEqual(await badType.json(), { error: "bad_request" });
@@ -102,6 +216,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(emptyName.status, 400);
     assert.deepEqual(await emptyName.json(), { error: "bad_request" });
@@ -117,6 +232,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     const principal = (await created.json()) as Principal;
 
@@ -128,6 +244,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(minted.status, 201);
     const setCookie = minted.headers.get("set-cookie");
@@ -150,6 +267,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(missingBody.status, 400);
     assert.deepEqual(await missingBody.json(), { error: "bad_request" });
@@ -162,6 +280,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(missingPrincipal.status, 404);
     assert.deepEqual(await missingPrincipal.json(), { error: "not_found" });
@@ -177,6 +296,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     const principal = (await created.json()) as Principal;
     const minted = await handleAdmin(
@@ -187,6 +307,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     const { session } = (await minted.json()) as { session: SessionRow };
 
@@ -197,6 +318,7 @@ describe("handleAdmin", () => {
       }),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(revoked.status, 204);
     const clear = revoked.headers.get("set-cookie");
@@ -214,8 +336,96 @@ describe("handleAdmin", () => {
       adminRequest("/api/admin/nope"),
       env,
       store,
+      stubCatalog(),
     );
     assert.equal(res.status, 404);
     assert.deepEqual(await res.json(), { error: "not_found" });
+  });
+
+  it("POSTs an organization tenant bundle and lists it", async () => {
+    const store = memoryStore();
+    const catalog = memoryCatalog();
+    const created = await handleAdmin(
+      adminRequest("/api/admin/organizations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Farm" }),
+      }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as {
+      organization: { id: string; name: string };
+      workspace: { id: string; name: string };
+      project: { id: string; name: string; parent_id: string | null };
+      principal: { id: string; type: string; display_name: string };
+    };
+    assert.equal(body.organization.name, "Farm");
+    assert.equal(body.workspace.name, "Farm");
+    assert.equal(body.project.name, "Farm");
+    assert.equal(body.project.parent_id, null);
+    assert.equal(body.principal.type, "human");
+    assert.equal(body.principal.display_name, "Farm");
+    assert.ok(body.organization.id);
+    assert.ok(body.workspace.id);
+    assert.ok(body.project.id);
+    assert.ok(body.principal.id);
+
+    const memberships = await catalog.listMemberships(body.principal.id);
+    assert.deepEqual(memberships, [
+      {
+        organization_id: body.organization.id,
+        organization_name: "Farm",
+        workspace_id: body.workspace.id,
+        workspace_name: "Farm",
+        role: "owner",
+      },
+    ]);
+
+    const listed = await handleAdmin(
+      adminRequest("/api/admin/organizations"),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(listed.status, 200);
+    const orgs = (await listed.json()) as {
+      organizations: { id: string; name: string }[];
+    };
+    assert.deepEqual(orgs.organizations, [
+      { id: body.organization.id, name: "Farm" },
+    ]);
+  });
+
+  it("rejects organization create with empty name", async () => {
+    const store = memoryStore();
+    const catalog = memoryCatalog();
+    const empty = await handleAdmin(
+      adminRequest("/api/admin/organizations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "" }),
+      }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(empty.status, 400);
+    assert.deepEqual(await empty.json(), { error: "bad_request" });
+
+    const whitespace = await handleAdmin(
+      adminRequest("/api/admin/organizations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "  " }),
+      }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(whitespace.status, 400);
+    assert.deepEqual(await whitespace.json(), { error: "bad_request" });
   });
 });

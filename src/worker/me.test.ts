@@ -4,6 +4,10 @@ import { handleAdmin } from "./admin.ts";
 import { handleMe } from "./me.ts";
 import type { Env } from "./env.ts";
 import {
+  type CatalogStore,
+  type Membership,
+} from "./catalog.ts";
+import {
   type Principal,
   type SessionRow,
   type SessionStore,
@@ -12,6 +16,30 @@ import { COOKIE_NAME } from "../lib/cookies.ts";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const env = { APP_ORIGIN: ORIGIN } as Env;
+
+function unused(): never {
+  throw new Error("unused");
+}
+
+function memoryCatalog(
+  byPrincipal: Map<string, Membership[]> = new Map(),
+): CatalogStore {
+  return {
+    async listMemberships(principalId) {
+      return [...(byPrincipal.get(principalId) ?? [])];
+    },
+    getMembership: unused,
+    listProjects: unused,
+    getProject: unused,
+    listStages: unused,
+    listWorkItems: unused,
+    getWorkItem: unused,
+    insertWorkItem: unused,
+    updateWorkItemTitle: unused,
+    insertTenantBundle: unused,
+    listOrganizations: unused,
+  };
+}
 
 function memoryStore(): SessionStore {
   const principals = new Map<string, Principal>();
@@ -80,6 +108,7 @@ describe("handleMe", () => {
       new Request(`${ORIGIN}/api/me`),
       env,
       store,
+      memoryCatalog(),
     );
     assert.equal(res.status, 401);
     assert.deepEqual(await res.json(), { error: "unauthorized" });
@@ -93,21 +122,49 @@ describe("handleMe", () => {
       }),
       env,
       store,
+      memoryCatalog(),
     );
     assert.equal(res.status, 401);
     assert.deepEqual(await res.json(), { error: "unauthorized" });
   });
 
-  it("returns the principal for a live session cookie", async () => {
+  it("returns the principal and empty memberships for a live session cookie", async () => {
     const store = memoryStore();
     const { principal, cookie } = await mintCookie(store);
     const res = await handleMe(
       new Request(`${ORIGIN}/api/me`, { headers: { cookie } }),
       env,
       store,
+      memoryCatalog(),
     );
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { principal });
+    assert.deepEqual(await res.json(), { principal, memberships: [] });
+  });
+
+  it("returns memberships for a principal with one membership", async () => {
+    const store = memoryStore();
+    const { principal, cookie } = await mintCookie(store);
+    const membership: Membership = {
+      organization_id: "org_1",
+      organization_name: "Acme",
+      workspace_id: "ws_1",
+      workspace_name: "Default",
+      role: "owner",
+    };
+    const catalog = memoryCatalog(
+      new Map([[principal.id, [membership]]]),
+    );
+    const res = await handleMe(
+      new Request(`${ORIGIN}/api/me`, { headers: { cookie } }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      principal,
+      memberships: [membership],
+    });
   });
 
   it("returns 401 after the session is revoked", async () => {
@@ -128,6 +185,7 @@ describe("handleMe", () => {
       new Request(`${ORIGIN}/api/me`, { headers: { cookie } }),
       env,
       store,
+      memoryCatalog(),
     );
     assert.equal(res.status, 401);
     assert.deepEqual(await res.json(), { error: "unauthorized" });

@@ -164,6 +164,9 @@ function fakeRoom(): {
               },
             } as Response;
           },
+          async appendSystem() {
+            throw new Error("unused");
+          },
         };
       },
     },

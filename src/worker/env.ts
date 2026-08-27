@@ -16,6 +16,14 @@ export type Fetcher = {
 
 export type RoomStub = {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+  appendSystem(input: { event_id: string }): Promise<{
+    seq: number;
+    kind: "activity";
+    body: string;
+    actor_id: null;
+    event_id: string;
+    created_at: string;
+  }>;
 };
 
 export type RoomNamespace = {

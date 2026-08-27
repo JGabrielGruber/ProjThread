@@ -1,6 +1,7 @@
 import type { Env } from "../worker/env.ts";
 import {
   rejectChatBody,
+  TAPE_EVENT_ID_INDEX,
   TAPE_SCHEMA,
   type Tape,
   type TapeMessage,
@@ -50,6 +51,7 @@ function sqlTape(sql: DurableObjectState["storage"]["sql"]): Tape {
   return {
     ensureSchema() {
       sql.exec(TAPE_SCHEMA);
+      sql.exec(TAPE_EVENT_ID_INDEX);
     },
     appendChat({ body, actor_id, created_at }) {
       const rejected = rejectChatBody(body);
@@ -61,6 +63,28 @@ function sqlTape(sql: DurableObjectState["storage"]["sql"]): Tape {
            RETURNING seq, kind, body, actor_id, event_id, created_at`,
           body,
           actor_id,
+          created_at,
+        )
+        .toArray();
+      return asTapeMessage(rows[0]!);
+    },
+    appendActivity({ event_id, created_at }) {
+      const eventId = event_id.trim();
+      if (eventId === "") throw new Error("empty");
+      const existing = sql
+        .exec(
+          `SELECT seq, kind, body, actor_id, event_id, created_at
+           FROM message WHERE event_id = ?`,
+          eventId,
+        )
+        .toArray();
+      if (existing[0]) return asTapeMessage(existing[0]);
+      const rows = sql
+        .exec(
+          `INSERT INTO message (kind, body, actor_id, event_id, created_at)
+           VALUES ('activity', '', NULL, ?, ?)
+           RETURNING seq, kind, body, actor_id, event_id, created_at`,
+          eventId,
           created_at,
         )
         .toArray();
@@ -162,6 +186,20 @@ export class Room {
       status: 101,
       webSocket: client,
     } as ResponseInit);
+  }
+
+  async appendSystem(input: { event_id: string }) {
+    const eventId = input.event_id?.trim() ?? "";
+    if (!eventId) throw new Error("empty");
+    const row = this.tape.appendActivity({
+      event_id: eventId,
+      created_at: new Date().toISOString(),
+    });
+    const frame = messageFrame(row);
+    for (const socket of this.ctx.getWebSockets()) {
+      socket.send(frame);
+    }
+    return row;
   }
 
   async webSocketMessage(

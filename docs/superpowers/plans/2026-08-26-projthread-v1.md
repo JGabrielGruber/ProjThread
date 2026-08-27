@@ -13,6 +13,6 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 5. Wiki | `2026-08-26-projthread-wiki.md` | Nodes, Markdown reader, work-item links; promote is not in this landing |
 | 6. Config | *(write after 5)* | PrimeVue dialogs: members, projects, stages |
 | 7. Skin + PWA | *(write after 6)* | Tokenized Grok/X-sharp, installability |
-| 8. Deploy | *(write after 7)* | `APP_ORIGIN`, Access, remote D1, domain as config |
+| 8. Deploy | *(write after 7)* | Access + custom domain as config. workers.dev dogfood already up; AUD still missing |
 
 **Now:** write the Config plan (plan 6). Do not implement Config until that file exists.

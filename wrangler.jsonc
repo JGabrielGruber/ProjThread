@@ -9,13 +9,14 @@
     "run_worker_first": ["/api/*", "/admin", "/admin/*"]
   },
   "vars": {
-    "APP_ORIGIN": "http://127.0.0.1:8787"
+    // Local wrangler dev overrides this via gitignored `.dev.vars`.
+    "APP_ORIGIN": "https://projthread.jgabrielgruber.workers.dev"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "projthread",
-      "database_id": "local",
+      "database_id": "91f78669-5146-42f5-8cfa-b14bf5e4346e",
       "migrations_dir": "migrations"
     }
   ],

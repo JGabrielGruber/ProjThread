@@ -90,6 +90,7 @@ export const useRoomStore = defineStore("room", () => {
       if (status.value === "idle" || itemId.value !== id) return;
       if (reconnectScheduled) return;
       reconnectScheduled = true;
+      status.value = "loading";
       connect();
     };
   }

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import KanbanBoard from "./KanbanBoard.vue";
 import { useSessionStore, type Membership } from "./stores/session.ts";
 import type { Project } from "./stores/board.ts";
+
+const RoomView = defineAsyncComponent(() => import("./RoomView.vue"));
 
 const session = useSessionStore();
 const route = useRoute();
@@ -19,6 +21,7 @@ function queryString(value: unknown): string | undefined {
 
 const workspaceQuery = computed(() => queryString(route.query.workspace));
 const projectQuery = computed(() => queryString(route.query.project));
+const itemQuery = computed(() => queryString(route.query.item));
 const hasBoardQuery = computed(
   () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
 );
@@ -84,7 +87,8 @@ watch(
       <header>
         <p class="who">{{ session.principal.display_name }}</p>
       </header>
-      <KanbanBoard v-if="hasBoardQuery" />
+      <RoomView v-if="itemQuery" />
+      <KanbanBoard v-else-if="hasBoardQuery" />
     </section>
   </main>
 </template>

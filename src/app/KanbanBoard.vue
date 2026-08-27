@@ -46,9 +46,14 @@ async function submit(): Promise<void> {
         <input v-model="draft" type="text" name="title" aria-label="New card title" />
         <button type="submit">Add</button>
       </form>
-      <article v-for="item in itemsFor(stage.key)" :key="item.id" class="card">
+      <router-link
+        v-for="item in itemsFor(stage.key)"
+        :key="item.id"
+        class="card"
+        :to="{ query: { ...route.query, item: item.id } }"
+      >
         {{ item.title }}
-      </article>
+      </router-link>
     </section>
   </div>
 </template>
@@ -99,6 +104,9 @@ button {
 }
 
 .card {
+  display: block;
+  color: inherit;
+  text-decoration: none;
   margin: 0 0 0.5rem;
   padding: 0.6rem 0.7rem;
   border-radius: var(--radius);

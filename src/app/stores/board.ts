@@ -96,6 +96,38 @@ export const useBoardStore = defineStore("board", () => {
     items.value = [...items.value, item];
   }
 
+  async function moveCard(
+    itemId: string,
+    to: string,
+    body: string,
+  ): Promise<void> {
+    const item = items.value.find((row) => row.id === itemId);
+    if (!item) return;
+    const reason = body.trim();
+    if (!reason) return;
+    if (to === item.stage_key) return;
+    const res = await fetch(`/api/work-items/${itemId}/events`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "stage_changed",
+        from: item.stage_key,
+        to,
+        body: reason,
+      }),
+    });
+    if (!res.ok) {
+      status.value = "error";
+      error.value = "error";
+      return;
+    }
+    const payload = (await res.json()) as { work_item: WorkItem };
+    items.value = items.value.map((row) =>
+      row.id === itemId ? payload.work_item : row,
+    );
+  }
+
   return {
     projects,
     stages,
@@ -107,5 +139,6 @@ export const useBoardStore = defineStore("board", () => {
     projectId,
     loadBoard,
     createCard,
+    moveCard,
   };
 });

@@ -6,6 +6,7 @@ import { useBoardStore, type WorkItem } from "./stores/board.ts";
 const route = useRoute();
 const board = useBoardStore();
 const draft = ref("");
+const moveReason = ref("");
 
 function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
@@ -35,10 +36,21 @@ async function submit(): Promise<void> {
   await board.createCard(title);
   draft.value = "";
 }
+
+async function onStage(item: WorkItem, event: Event): Promise<void> {
+  const select = event.target as HTMLSelectElement;
+  await board.moveCard(item.id, select.value, moveReason.value);
+}
 </script>
 
 <template>
   <p v-if="board.status === 'error'" class="error">Could not load board</p>
+  <input
+    v-model="moveReason"
+    type="text"
+    aria-label="Move reason"
+    class="reason"
+  />
   <div class="board">
     <section v-for="stage in columns" :key="stage.key" class="column">
       <h2>{{ stage.label }}</h2>
@@ -46,14 +58,28 @@ async function submit(): Promise<void> {
         <input v-model="draft" type="text" name="title" aria-label="New card title" />
         <button type="submit">Add</button>
       </form>
-      <router-link
+      <article
         v-for="item in itemsFor(stage.key)"
         :key="item.id"
         class="card"
-        :to="{ query: { ...route.query, item: item.id } }"
       >
-        {{ item.title }}
-      </router-link>
+        <router-link :to="{ query: { ...route.query, item: item.id } }">
+          {{ item.title }}
+        </router-link>
+        <select
+          aria-label="Stage"
+          :value="item.stage_key"
+          @change="onStage(item, $event)"
+        >
+          <option
+            v-for="option in columns"
+            :key="option.key"
+            :value="option.key"
+          >
+            {{ option.label }}
+          </option>
+        </select>
+      </article>
     </section>
   </div>
 </template>
@@ -88,6 +114,11 @@ h2 {
   margin-bottom: 0.75rem;
 }
 
+.reason {
+  margin: 0 0 1rem;
+}
+
+select,
 input,
 button {
   font: inherit;
@@ -106,11 +137,17 @@ button {
 .card {
   display: block;
   color: inherit;
-  text-decoration: none;
   margin: 0 0 0.5rem;
   padding: 0.6rem 0.7rem;
   border-radius: var(--radius);
   border: 1px solid var(--muted);
+}
+
+.card a {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+  margin-bottom: 0.4rem;
 }
 
 .error {

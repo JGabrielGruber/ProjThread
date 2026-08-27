@@ -7,6 +7,8 @@ import { handleMe } from "./me.ts";
 import { handleRoom } from "./room-http.ts";
 import { d1SessionStore } from "./session.ts";
 import { handleAdminShell, isAdminPath } from "./shell.ts";
+import { handleWiki } from "./wiki-http.ts";
+import { d1WikiStore } from "./wiki.ts";
 
 export { Room } from "../room/room.ts";
 
@@ -15,6 +17,7 @@ export default {
     const url = new URL(request.url);
     const store = d1SessionStore(env.DB);
     const catalog = d1CatalogStore(env.DB);
+    const wiki = d1WikiStore(env.DB);
 
     if (url.pathname.startsWith("/api/admin")) {
       if (!(await authorizeAdmin(request, env))) return adminForbidden(request);
@@ -27,6 +30,13 @@ export default {
 
     if (url.pathname.startsWith("/api/rooms/")) {
       return handleRoom(request, env, store, catalog);
+    }
+
+    if (
+      url.pathname.startsWith("/api/nodes") ||
+      /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname)
+    ) {
+      return handleWiki(request, env, store, catalog, wiki);
     }
 
     if (

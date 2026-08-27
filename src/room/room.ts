@@ -213,6 +213,7 @@ export class Room {
     code: number,
     reason: string,
   ): Promise<void> {
-    ws.close(code, reason);
+    const reply = code === 1005 || code === 1006 ? 1000 : code;
+    ws.close(reply, reason);
   }
 }

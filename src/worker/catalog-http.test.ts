@@ -413,6 +413,84 @@ describe("handleCatalog", () => {
     assert.equal(item?.stage_key, "backlog");
   });
 
+  it("GET work-item snapshot returns the row", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const row: WorkItemRow = {
+      id: "wi-snap",
+      project_id: bundle.project.id,
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      title: "Snapshot card",
+      stage_key: "backlog",
+      owner_id: null,
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    };
+    await catalog.insertWorkItem(row);
+
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-snap`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 200);
+    const item = (await res.json()) as WorkItemRow;
+    assert.equal(item.id, "wi-snap");
+    assert.equal(item.title, "Snapshot card");
+    assert.equal(item.stage_key, "backlog");
+    assert.deepEqual(item, row);
+  });
+
+  it("GET work-item without cookie is 401", async () => {
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-snap`),
+      env,
+      memoryStore(),
+      memoryCatalog(),
+    );
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: "unauthorized" });
+  });
+
+  it("GET work-item in another workspace is 403", async () => {
+    const { cookie, catalog, sessions } = await memberContext();
+    await catalog.insertWorkItem({
+      id: "wi-other",
+      project_id: "proj-other",
+      workspace_id: "ws-other",
+      organization_id: "org-other",
+      title: "Other",
+      stage_key: "backlog",
+      owner_id: null,
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    });
+
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-other`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { error: "forbidden" });
+  });
+
+  it("GET unknown work-item is 404", async () => {
+    const { cookie, catalog, sessions } = await memberContext();
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-missing`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "not_found" });
+  });
+
   it("POST empty title is 400", async () => {
     const { cookie, catalog, bundle, sessions } = await memberContext();
     const res = await handleCatalog(

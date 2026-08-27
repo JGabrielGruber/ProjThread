@@ -55,11 +55,35 @@ export async function handleCatalog(
   }
 
   const workItemId = matchWorkItemId(url.pathname);
+  if (workItemId && request.method === "GET") {
+    return getWorkItem(workItemId, principal.id, catalog);
+  }
   if (workItemId && request.method === "PATCH") {
     return patchWorkItem(request, workItemId, principal.id, catalog);
   }
 
   return Response.json({ error: "not_found" }, { status: 404 });
+}
+
+async function getWorkItem(
+  id: string,
+  principalId: string,
+  catalog: CatalogStore,
+): Promise<Response> {
+  const item = await catalog.getWorkItem(id);
+  if (!item) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  const membership = await catalog.getMembership(
+    item.workspace_id,
+    principalId,
+  );
+  if (!membership) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  return Response.json(item);
 }
 
 async function listWorkItems(

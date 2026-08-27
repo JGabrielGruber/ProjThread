@@ -15,4 +15,4 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 7. Skin + PWA | *(write after 6)* | Tokenized Grok/X-sharp, installability |
 | 8. Deploy | *(write after 7)* | `APP_ORIGIN`, Access, remote D1, domain as config |
 
-**Now:** execute plan 3 (room) only.
+**Now:** write plan 4 (Activity). Do not implement Activity until that plan exists.

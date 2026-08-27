@@ -8,6 +8,7 @@ import {
   type ProjectRow,
   type StageRow,
   type TenantBundle,
+  type WorkItemEventRow,
   type WorkItemRow,
 } from "./catalog.ts";
 import type { Env } from "./env.ts";
@@ -40,6 +41,7 @@ function memoryCatalog(): MemoryCatalog {
   const stages = new Map<string, StageRow>();
   const projects = new Map<string, ProjectRow & { created_at: string }>();
   const workItems = new Map<string, WorkItemRow>();
+  const events = new Map<string, WorkItemEventRow>();
 
   function membershipKey(workspaceId: string, principalId: string): string {
     return `${workspaceId}:${principalId}`;
@@ -123,8 +125,36 @@ function memoryCatalog(): MemoryCatalog {
     async listOrganizations() {
       throw new Error("unused");
     },
-    listWorkItemEvents: unused,
-    commitWorkItemEvent: unused,
+    async listWorkItemEvents(workItemId) {
+      return [...events.values()]
+        .filter((row) => row.work_item_id === workItemId)
+        .sort((a, b) => {
+          if (a.created_at < b.created_at) return -1;
+          if (a.created_at > b.created_at) return 1;
+          if (a.id < b.id) return -1;
+          if (a.id > b.id) return 1;
+          return 0;
+        })
+        .map((row) => ({ ...row }));
+    },
+    async commitWorkItemEvent(commit) {
+      events.set(commit.event.id, { ...commit.event });
+      const item = workItems.get(commit.event.work_item_id);
+      if (!item) return;
+      if (commit.stage_key === undefined && commit.owner_id === undefined) {
+        return;
+      }
+      workItems.set(commit.event.work_item_id, {
+        ...item,
+        ...(commit.stage_key !== undefined
+          ? { stage_key: commit.stage_key }
+          : {}),
+        ...(commit.owner_id !== undefined ? { owner_id: commit.owner_id } : {}),
+        ...(commit.updated_at !== undefined
+          ? { updated_at: commit.updated_at }
+          : {}),
+      });
+    },
     seedProject(row) {
       projects.set(row.id, { ...row });
     },
@@ -512,5 +542,361 @@ describe("handleCatalog", () => {
     );
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { error: "bad_request" });
+  });
+});
+
+function roomEnv(append: (event_id: string) => Promise<unknown>): Env {
+  return {
+    APP_ORIGIN: ORIGIN,
+    Room: {
+      getByName: () => ({
+        fetch: async () => new Response(null, { status: 500 }),
+        appendSystem: async ({ event_id }) => append(event_id) as never,
+      }),
+    },
+  } as Env;
+}
+
+async function seedCard(
+  catalog: MemoryCatalog,
+  bundle: TenantBundle,
+  id = "wi-1",
+): Promise<WorkItemRow> {
+  const row: WorkItemRow = {
+    id,
+    project_id: bundle.project.id,
+    workspace_id: bundle.workspace.id,
+    organization_id: bundle.organization.id,
+    title: "Card",
+    stage_key: "backlog",
+    owner_id: null,
+    created_at: "2026-01-02T00:00:00.000Z",
+    updated_at: "2026-01-02T00:00:00.000Z",
+  };
+  await catalog.insertWorkItem(row);
+  return row;
+}
+
+describe("handleCatalog events", () => {
+  it("GET events without cookie is 401", async () => {
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`),
+      env,
+      memoryStore(),
+      memoryCatalog(),
+    );
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: "unauthorized" });
+  });
+
+  it("GET events in another workspace is 403", async () => {
+    const { cookie, catalog, sessions } = await memberContext();
+    await catalog.insertWorkItem({
+      id: "wi-other",
+      project_id: "proj-other",
+      workspace_id: "ws-other",
+      organization_id: "org-other",
+      title: "Other",
+      stage_key: "backlog",
+      owner_id: null,
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    });
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-other/events`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { error: "forbidden" });
+  });
+
+  it("GET events for a missing item is 404", async () => {
+    const { cookie, catalog, sessions } = await memberContext();
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-missing/events`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "not_found" });
+  });
+
+  it("GET events on a real item is 200 empty list", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { events: [] });
+  });
+
+  it("POST note stores body as sent and calls appendSystem once", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const ids: string[] = [];
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ type: "note", body: "  hi  " }),
+      }),
+      roomEnv(async (event_id) => {
+        ids.push(event_id);
+      }),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 201);
+    const payload = (await res.json()) as {
+      event: WorkItemEventRow;
+      work_item: WorkItemRow;
+    };
+    assert.equal(payload.event.body, "  hi  ");
+    assert.equal(payload.event.type, "note");
+    assert.deepEqual(ids, [payload.event.id]);
+    const listed = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    const body = (await listed.json()) as { events: WorkItemEventRow[] };
+    assert.equal(body.events.length, 1);
+  });
+
+  it("POST stage_changed updates snapshot stage_key", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "stage_changed",
+          from: "backlog",
+          to: "doing",
+          body: "start",
+        }),
+      }),
+      roomEnv(async () => {}),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 201);
+    const payload = (await res.json()) as { work_item: WorkItemRow };
+    assert.equal(payload.work_item.stage_key, "doing");
+    const snap = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+    );
+    const item = (await snap.json()) as WorkItemRow;
+    assert.equal(item.stage_key, "doing");
+  });
+
+  it("POST stage_changed empty body is 400 and does not append", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    let calls = 0;
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "stage_changed",
+          from: "backlog",
+          to: "doing",
+          body: "",
+        }),
+      }),
+      roomEnv(async () => {
+        calls += 1;
+      }),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 400);
+    assert.equal(calls, 0);
+    const item = await catalog.getWorkItem("wi-1");
+    assert.equal(item?.stage_key, "backlog");
+  });
+
+  it("POST stage_changed with wrong from is 400", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "stage_changed",
+          from: "doing",
+          to: "done",
+          body: "skip",
+        }),
+      }),
+      roomEnv(async () => {}),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("POST stage_changed to unknown stage is 400", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "stage_changed",
+          from: "backlog",
+          to: "nope",
+          body: "bad",
+        }),
+      }),
+      roomEnv(async () => {}),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("PATCH with stage_key is still 400", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Nope", stage_key: "doing" }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("POST decision empty body is 400", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ type: "decision", body: "" }),
+      }),
+      roomEnv(async () => {}),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("POST owner_changed assigns a workspace member", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "owner_changed",
+          from: null,
+          to: bundle.principal.id,
+        }),
+      }),
+      roomEnv(async () => {}),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 201);
+    const payload = (await res.json()) as { work_item: WorkItemRow };
+    assert.equal(payload.work_item.owner_id, bundle.principal.id);
+  });
+
+  it("POST owner_changed to an outsider is 400", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "owner_changed",
+          from: null,
+          to: "prin-outsider",
+        }),
+      }),
+      roomEnv(async () => {}),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("appendSystem first throw then success still 201", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    let calls = 0;
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ type: "note", body: "retry" }),
+      }),
+      roomEnv(async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("fail");
+      }),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 201);
+    assert.equal(calls, 2);
+    const listed = await catalog.listWorkItemEvents("wi-1");
+    assert.equal(listed.length, 1);
+  });
+
+  it("appendSystem both throws still 201 and lists the D1 event", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    await seedCard(catalog, bundle);
+    let calls = 0;
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/work-items/wi-1/events`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ type: "note", body: "keep" }),
+      }),
+      roomEnv(async () => {
+        calls += 1;
+        throw new Error("fail");
+      }),
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 201);
+    assert.equal(calls, 2);
+    const listed = await catalog.listWorkItemEvents("wi-1");
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]?.body, "keep");
   });
 });

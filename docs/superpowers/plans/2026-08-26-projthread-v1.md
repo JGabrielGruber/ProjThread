@@ -16,4 +16,4 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 7b. Chrome | `2026-08-27-projthread-chrome.md` | App shell, board cards (Move in modal), wiki create modal + edit surface, overlay status toast, config sections |
 | 8. Deploy | *(parked — no custom domain yet)* | Custom domain as config. workers.dev + Access AUD already live |
 
-**Now:** execute chrome only. Park plan 8 until a custom domain exists. Do not write or implement Deploy.
+**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy.

@@ -102,10 +102,8 @@ async function submitStages(): Promise<void> {
 <template>
   <section class="config">
     <h2>Config</h2>
-    <p v-if="config.status === 'loading'" class="muted">Loading</p>
-    <p v-else-if="config.status === 'error'" class="error">Could not load config</p>
-    <p v-else-if="config.status === 'no_session'">No session</p>
 
+    <section class="block">
     <h3>Members</h3>
     <ul>
       <li v-for="member in config.members" :key="member.principal_id">
@@ -135,7 +133,9 @@ async function submitStages(): Promise<void> {
         <button type="button" @click="memberOpen = false">Cancel</button>
       </form>
     </Modal>
+    </section>
 
+    <section class="block">
     <h3>Projects</h3>
     <ul>
       <li v-for="project in config.projects" :key="project.id">
@@ -190,7 +190,9 @@ async function submitStages(): Promise<void> {
         <button type="button" @click="renameOpen = false">Cancel</button>
       </form>
     </Modal>
+    </section>
 
+    <section class="block">
     <h3>Stages</h3>
     <ul>
       <li v-for="stage in draftStages" :key="stage.key">
@@ -214,12 +216,22 @@ async function submitStages(): Promise<void> {
     >
       Save
     </button>
+    </section>
   </section>
 </template>
 
 <style scoped>
 .config {
+  max-width: 40rem;
   color: var(--fg);
+}
+
+.block {
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 h2,
@@ -229,17 +241,7 @@ h3 {
 }
 
 h3 {
-  margin-top: 1.5rem;
-}
-
-.muted {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.error {
-  color: var(--danger);
+  margin-top: 0;
 }
 
 ul {
@@ -268,7 +270,7 @@ button {
   font: inherit;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.35rem 0.5rem;
 }

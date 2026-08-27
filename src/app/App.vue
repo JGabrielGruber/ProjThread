@@ -2,8 +2,12 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import KanbanBoard from "./KanbanBoard.vue";
+import Toast from "./Toast.vue";
+import { useBoardStore, type Project } from "./stores/board.ts";
+import { useConfigStore } from "./stores/config.ts";
+import { useRoomStore } from "./stores/room.ts";
 import { useSessionStore, type Membership } from "./stores/session.ts";
-import type { Project } from "./stores/board.ts";
+import { useWikiStore } from "./stores/wiki.ts";
 
 type ThemeMode = "system" | "dark" | "light";
 const THEME_ORDER: ThemeMode[] = ["system", "dark", "light"];
@@ -13,6 +17,10 @@ const WikiView = defineAsyncComponent(() => import("./WikiView.vue"));
 const ConfigView = defineAsyncComponent(() => import("./ConfigView.vue"));
 
 const session = useSessionStore();
+const board = useBoardStore();
+const room = useRoomStore();
+const wiki = useWikiStore();
+const config = useConfigStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -71,6 +79,56 @@ const configQuery = computed(
 const hasBoardQuery = computed(
   () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
 );
+
+const kanbanNav = computed(
+  () =>
+    Boolean(itemQuery.value) ||
+    (hasBoardQuery.value && !itemQuery.value && !wikiQuery.value && !configQuery.value),
+);
+const wikiNav = computed(() => wikiQuery.value && !itemQuery.value);
+const configNav = computed(
+  () => configQuery.value && !itemQuery.value && !wikiQuery.value,
+);
+
+const toast = computed(() => {
+  if (itemQuery.value) {
+    if (room.status === "loading") return { message: "Connecting", tone: "info" as const };
+    if (room.status === "error") {
+      return { message: "Could not open room", tone: "error" as const };
+    }
+    if (room.status === "no_session") {
+      return { message: "No session", tone: "info" as const };
+    }
+    return { message: "", tone: "info" as const };
+  }
+  if (wikiQuery.value) {
+    if (wiki.status === "loading") return { message: "Loading", tone: "info" as const };
+    if (wiki.status === "error") {
+      return { message: "Could not load wiki", tone: "error" as const };
+    }
+    if (wiki.status === "no_session") {
+      return { message: "No session", tone: "info" as const };
+    }
+    return { message: "", tone: "info" as const };
+  }
+  if (configQuery.value) {
+    if (config.status === "loading") return { message: "Loading", tone: "info" as const };
+    if (config.status === "error") {
+      return { message: "Could not load config", tone: "error" as const };
+    }
+    if (config.status === "no_session") {
+      return { message: "No session", tone: "info" as const };
+    }
+    return { message: "", tone: "info" as const };
+  }
+  if (hasBoardQuery.value) {
+    if (board.status === "loading") return { message: "Loading", tone: "info" as const };
+    if (board.status === "error") {
+      return { message: "Could not load board", tone: "error" as const };
+    }
+  }
+  return { message: "", tone: "info" as const };
+});
 
 async function openBoard(): Promise<void> {
   const query: Record<string, string> = {};
@@ -150,56 +208,118 @@ watch(
   <main v-if="session.loaded">
     <h1 v-if="!session.principal">No session</h1>
     <h1 v-else-if="session.memberships.length === 0">No workspace</h1>
-    <section v-else>
+    <section v-else class="shell">
       <header>
         <p class="who">{{ session.principal.display_name }}</p>
-        <button type="button" class="wiki-nav" @click="openBoard">Kanban</button>
-        <button type="button" class="wiki-nav" @click="openWiki">Wiki</button>
-        <button type="button" class="wiki-nav" @click="openConfig">Config</button>
-        <button type="button" class="wiki-nav" @click="cycleTheme">
+        <button
+          type="button"
+          class="nav-btn"
+          :class="{ 'is-active': kanbanNav }"
+          :aria-current="kanbanNav ? 'page' : undefined"
+          @click="openBoard"
+        >
+          Kanban
+        </button>
+        <button
+          type="button"
+          class="nav-btn"
+          :class="{ 'is-active': wikiNav }"
+          :aria-current="wikiNav ? 'page' : undefined"
+          @click="openWiki"
+        >
+          Wiki
+        </button>
+        <button
+          type="button"
+          class="nav-btn"
+          :class="{ 'is-active': configNav }"
+          :aria-current="configNav ? 'page' : undefined"
+          @click="openConfig"
+        >
+          Config
+        </button>
+        <button type="button" class="nav-btn" @click="cycleTheme">
           {{ themeMode }}
         </button>
       </header>
-      <RoomView v-if="itemQuery" />
-      <WikiView v-else-if="wikiQuery" />
-      <ConfigView v-else-if="configQuery" />
-      <KanbanBoard v-else-if="hasBoardQuery" />
+      <div class="stage">
+        <RoomView v-if="itemQuery" />
+        <WikiView v-else-if="wikiQuery" />
+        <ConfigView v-else-if="configQuery" />
+        <KanbanBoard v-else-if="hasBoardQuery" />
+      </div>
     </section>
+    <Toast :message="toast.message" :tone="toast.tone" />
   </main>
 </template>
 
 <style scoped>
 main {
-  padding: 1.5rem;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   color: var(--fg);
   background: var(--bg);
   font-family: var(--font);
 }
 
+.shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100dvh;
+}
+
 h1 {
   margin: 0;
+  padding: 1.5rem;
   font-size: 1.5rem;
 }
 
 header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
-  gap: 1rem;
-  align-items: baseline;
-  margin-bottom: 1rem;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 
-.wiki-nav {
+.stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem;
+}
+
+.stage > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.nav-btn {
   font: inherit;
-  color: var(--accent);
-  background: var(--bg);
-  border: 1px solid var(--muted);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.35rem 0.5rem;
   cursor: pointer;
 }
 
+.nav-btn.is-active {
+  color: var(--fg);
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
 .who {
   margin: 0;
+  margin-right: auto;
   font-size: 0.9rem;
   color: var(--muted);
 }

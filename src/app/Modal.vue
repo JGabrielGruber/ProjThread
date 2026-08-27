@@ -47,7 +47,7 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: center;
   padding: 2rem 1rem;
-  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
 }
 
 .panel {

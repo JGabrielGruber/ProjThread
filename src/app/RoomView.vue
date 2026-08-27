@@ -69,9 +69,6 @@ function toggleActivityOnly(): void {
       <h2>{{ room.item?.title }}</h2>
       <p class="stage">{{ room.item?.stage_key }}</p>
     </header>
-    <p v-if="room.status === 'loading'" class="muted">Connecting</p>
-    <p v-else-if="room.status === 'error'" class="error">Could not open room</p>
-    <p v-else-if="room.status === 'no_session'">No session</p>
     <button type="button" class="toggle" @click="toggleActivityOnly">
       Activity only
     </button>
@@ -166,10 +163,6 @@ button {
 button {
   color: var(--accent);
   cursor: pointer;
-}
-
-.error {
-  color: var(--danger);
 }
 
 .tape {

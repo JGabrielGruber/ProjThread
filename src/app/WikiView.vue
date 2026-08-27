@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import Modal from "./Modal.vue";
 import { renderMarkdown } from "./markdown.ts";
 import { useWikiStore } from "./stores/wiki.ts";
 
@@ -11,6 +12,7 @@ const router = useRouter();
 const wiki = useWikiStore();
 
 const editing = ref(false);
+const createOpen = ref(false);
 const draftTitle = ref("");
 const draftType = ref<(typeof NODE_TYPES)[number]>("note");
 const draftContent = ref("");
@@ -51,6 +53,18 @@ async function back(): Promise<void> {
   await router.replace({ query });
 }
 
+function openCreate(): void {
+  draftTitle.value = "";
+  draftType.value = "note";
+  draftContent.value = "";
+  linkId.value = "";
+  createOpen.value = true;
+}
+
+function cancelCreate(): void {
+  createOpen.value = false;
+}
+
 async function create(): Promise<void> {
   if (wiki.status !== "ready") return;
   const title = draftTitle.value.trim();
@@ -71,6 +85,7 @@ async function create(): Promise<void> {
   draftTitle.value = "";
   draftContent.value = "";
   linkId.value = "";
+  createOpen.value = false;
   if (wiki.node) await openNode(wiki.node.id);
 }
 
@@ -108,10 +123,6 @@ async function link(): Promise<void> {
       <button v-if="nodeId" type="button" class="back" @click="back">Back</button>
       <h2>{{ wiki.node?.title ?? "Wiki" }}</h2>
     </header>
-    <p v-if="wiki.status === 'loading'" class="muted">Loading</p>
-    <p v-else-if="wiki.status === 'error'" class="error">Could not load wiki</p>
-    <p v-else-if="wiki.status === 'no_session'">No session</p>
-
     <template v-if="!nodeId">
       <ul class="list">
         <li v-for="row in wiki.nodes" :key="row.id">
@@ -121,21 +132,36 @@ async function link(): Promise<void> {
           <span class="muted">{{ row.type }}</span>
         </li>
       </ul>
-      <form class="composer" @submit.prevent="create">
-        <input v-model="draftTitle" type="text" aria-label="Title" />
-        <select v-model="draftType" aria-label="Type">
-          <option v-for="type in NODE_TYPES" :key="type" :value="type">
-            {{ type }}
-          </option>
-        </select>
-        <textarea v-model="draftContent" aria-label="Content" />
-        <input
-          v-model="linkId"
-          type="text"
-          aria-label="Work item id"
-        />
-        <button type="submit" :disabled="wiki.status !== 'ready'">Create</button>
-      </form>
+      <button
+        type="button"
+        :disabled="wiki.status !== 'ready'"
+        @click="openCreate"
+      >
+        Create
+      </button>
+      <Modal
+        :open="createOpen"
+        title="Create node"
+        labelled-by="wiki-create-title"
+        @close="cancelCreate"
+      >
+        <form class="form" @submit.prevent="create">
+          <input v-model="draftTitle" type="text" aria-label="Title" />
+          <select v-model="draftType" aria-label="Type">
+            <option v-for="type in NODE_TYPES" :key="type" :value="type">
+              {{ type }}
+            </option>
+          </select>
+          <textarea v-model="draftContent" aria-label="Content" />
+          <input
+            v-model="linkId"
+            type="text"
+            aria-label="Work item id"
+          />
+          <button type="submit" :disabled="wiki.status !== 'ready'">Create</button>
+          <button type="button" @click="cancelCreate">Cancel</button>
+        </form>
+      </Modal>
     </template>
 
     <template v-else-if="wiki.node">
@@ -144,35 +170,46 @@ async function link(): Promise<void> {
         <button type="button" :disabled="wiki.status !== 'ready'" @click="startEdit">
           Edit
         </button>
+        <form class="link" @submit.prevent="link">
+          <input
+            v-model="linkId"
+            type="text"
+            aria-label="Work item id"
+          />
+          <button type="submit" :disabled="wiki.status !== 'ready'">Link</button>
+        </form>
+        <p class="muted">{{ wiki.workItemIds.join(", ") }}</p>
       </template>
-      <template v-else>
-        <input v-model="draftTitle" type="text" aria-label="Title" />
-        <select v-model="draftType" aria-label="Type">
-          <option v-for="type in NODE_TYPES" :key="type" :value="type">
-            {{ type }}
-          </option>
-        </select>
-        <textarea v-model="draftContent" aria-label="Source" />
-        <button type="button" :disabled="wiki.status !== 'ready'" @click="save">
-          Save
-        </button>
-        <button type="button" @click="editing = false">Read</button>
-      </template>
-      <form class="link" @submit.prevent="link">
-        <input
-          v-model="linkId"
-          type="text"
-          aria-label="Work item id"
+      <div v-else class="wiki-edit">
+        <div class="row">
+          <input v-model="draftTitle" type="text" aria-label="Title" />
+          <select v-model="draftType" aria-label="Type">
+            <option v-for="type in NODE_TYPES" :key="type" :value="type">
+              {{ type }}
+            </option>
+          </select>
+        </div>
+        <textarea
+          v-model="draftContent"
+          class="source"
+          aria-label="Source"
         />
-        <button type="submit" :disabled="wiki.status !== 'ready'">Link</button>
-      </form>
-      <p class="muted">{{ wiki.workItemIds.join(", ") }}</p>
+        <div class="actions">
+          <button type="button" :disabled="wiki.status !== 'ready'" @click="save">
+            Save
+          </button>
+          <button type="button" @click="editing = false">Read</button>
+        </div>
+      </div>
     </template>
   </section>
 </template>
 
 <style scoped>
 .wiki {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   color: var(--fg);
 }
 
@@ -195,10 +232,6 @@ h2 {
   font-size: 0.9rem;
 }
 
-.error {
-  color: var(--danger);
-}
-
 .list {
   list-style: none;
   margin: 0 0 1rem;
@@ -210,9 +243,13 @@ h2 {
   gap: 0.75rem;
   align-items: baseline;
   margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-.composer,
+.form,
 .link {
   display: flex;
   flex-direction: column;
@@ -225,10 +262,46 @@ h2 {
   max-width: var(--measure);
   line-height: 1.65;
   margin: 0 0 1rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .wiki-read :deep(a) {
   color: var(--accent);
+}
+
+.wiki-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 16rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.row input {
+  flex: 1 1 12rem;
+}
+
+.source {
+  flex: 1;
+  min-height: 12rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 input,
@@ -238,13 +311,13 @@ button {
   font: inherit;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.35rem 0.5rem;
 }
 
-textarea {
-  min-height: 12rem;
+.form textarea {
+  min-height: 8rem;
 }
 
 button,

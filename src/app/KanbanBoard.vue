@@ -51,12 +51,8 @@ async function submit(): Promise<void> {
   cancelAdd();
 }
 
-async function onStage(item: WorkItem, event: Event): Promise<void> {
-  const select = event.target as HTMLSelectElement;
-  const to = select.value;
-  select.value = item.stage_key;
-  if (to === item.stage_key) return;
-  pendingMove.value = { item, to };
+function openMove(item: WorkItem): void {
+  pendingMove.value = { item, to: item.stage_key };
   moveReason.value = "";
 }
 
@@ -68,14 +64,15 @@ function cancelMove(): void {
 async function confirmMove(): Promise<void> {
   const pending = pendingMove.value;
   if (!pending || !moveReason.value.trim()) return;
-  await board.moveCard(pending.item.id, pending.to, moveReason.value);
-  if (board.status === "error") return;
+  if (pending.to !== pending.item.stage_key) {
+    await board.moveCard(pending.item.id, pending.to, moveReason.value);
+    if (board.status === "error") return;
+  }
   cancelMove();
 }
 </script>
 
 <template>
-  <p v-if="board.status === 'error'" class="error">Could not load board</p>
   <Modal
     :open="addOpen"
     title="Add card"
@@ -100,10 +97,24 @@ async function confirmMove(): Promise<void> {
     @close="cancelMove"
   >
     <form class="form" @submit.prevent="confirmMove">
+      <select
+        v-if="pendingMove"
+        v-model="pendingMove.to"
+        aria-label="Stage"
+      >
+        <option
+          v-for="option in columns"
+          :key="option.key"
+          :value="option.key"
+        >
+          {{ option.label }}
+        </option>
+      </select>
       <input
         v-model="moveReason"
         type="text"
         aria-label="Move reason"
+        required
       />
       <button type="submit">Move</button>
       <button type="button" @click="cancelMove">Cancel</button>
@@ -128,19 +139,9 @@ async function confirmMove(): Promise<void> {
         <router-link :to="{ query: { ...route.query, item: item.id } }">
           {{ item.title }}
         </router-link>
-        <select
-          aria-label="Stage"
-          :value="item.stage_key"
-          @change="onStage(item, $event)"
-        >
-          <option
-            v-for="option in columns"
-            :key="option.key"
-            :value="option.key"
-          >
-            {{ option.label }}
-          </option>
-        </select>
+        <button type="button" class="move" @click="openMove(item)">
+          Move
+        </button>
       </article>
     </section>
   </div>
@@ -150,17 +151,19 @@ async function confirmMove(): Promise<void> {
 .board {
   display: flex;
   gap: 1rem;
-  align-items: flex-start;
+  align-items: stretch;
+  min-height: 100%;
   overflow-x: auto;
 }
 
 .column {
   flex: 1 1 12rem;
   min-width: 12rem;
+  min-height: calc(100dvh - 6rem);
   padding: 0.75rem;
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--surface);
 }
 
 h2 {
@@ -188,7 +191,7 @@ button {
   font: inherit;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.35rem 0.5rem;
 }
@@ -199,23 +202,28 @@ button {
 }
 
 .card {
-  display: block;
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
   color: inherit;
   margin: 0 0 0.5rem;
   padding: 0.6rem 0.7rem;
   border-radius: var(--radius);
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .card a {
   color: inherit;
   text-decoration: none;
-  display: block;
-  margin-bottom: 0.4rem;
+  flex: 1;
+  min-width: 0;
 }
 
-.error {
-  margin: 0 0 1rem;
-  color: var(--danger);
+.move {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
 }
 </style>

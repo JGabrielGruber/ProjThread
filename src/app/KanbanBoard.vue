@@ -86,7 +86,7 @@ async function confirmMove(): Promise<void> {
         name="title"
         aria-label="New card title"
       />
-      <button type="submit">Add</button>
+      <button type="submit" class="primary">Add</button>
       <button type="button" @click="cancelAdd">Cancel</button>
     </form>
   </Modal>
@@ -116,7 +116,7 @@ async function confirmMove(): Promise<void> {
         aria-label="Move reason"
         required
       />
-      <button type="submit">Move</button>
+      <button type="submit" class="primary">Move</button>
       <button type="button" @click="cancelMove">Cancel</button>
     </form>
   </Modal>
@@ -126,7 +126,7 @@ async function confirmMove(): Promise<void> {
       <button
         v-if="stage.key === 'backlog'"
         type="button"
-        class="composer"
+        class="composer primary"
         @click="openAdd"
       >
         Add
@@ -150,32 +150,39 @@ async function confirmMove(): Promise<void> {
 <style scoped>
 .board {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: stretch;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 1rem;
   overflow-x: auto;
 }
 
 .column {
-  flex: 1 1 12rem;
-  min-width: 12rem;
-  min-height: calc(100dvh - 6rem);
+  flex: 1 1 16rem;
+  min-width: 16rem;
+  min-height: 100%;
   padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.column:last-child {
+  border-right: none;
 }
 
 h2 {
   margin: 0 0 0.75rem;
-  font-size: 0.95rem;
+  font-size: 0.8125rem;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .composer {
   display: flex;
-  gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
@@ -193,12 +200,18 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
+  padding: 0.5rem 0.75rem;
 }
 
 button {
   color: var(--accent);
   cursor: pointer;
+}
+
+button.primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .card {
@@ -208,10 +221,14 @@ button {
   justify-content: space-between;
   color: inherit;
   margin: 0 0 0.5rem;
-  padding: 0.6rem 0.7rem;
+  padding: 0.75rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
 }
 
 .card a {
@@ -223,7 +240,8 @@ button {
 
 .move {
   flex: 0 0 auto;
-  padding: 0.2rem 0.4rem;
-  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: transparent;
 }
 </style>

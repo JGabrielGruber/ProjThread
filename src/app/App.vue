@@ -209,7 +209,7 @@ watch(
     <h1 v-if="!session.principal">No session</h1>
     <h1 v-else-if="session.memberships.length === 0">No workspace</h1>
     <section v-else class="shell">
-      <header>
+      <nav class="rail" aria-label="App">
         <p class="who">{{ session.principal.display_name }}</p>
         <button
           type="button"
@@ -238,10 +238,10 @@ watch(
         >
           Config
         </button>
-        <button type="button" class="nav-btn" @click="cycleTheme">
+        <button type="button" class="nav-btn theme" @click="cycleTheme">
           {{ themeMode }}
         </button>
-      </header>
+      </nav>
       <div class="stage">
         <RoomView v-if="itemQuery" />
         <WikiView v-else-if="wikiQuery" />
@@ -256,18 +256,21 @@ watch(
 <style scoped>
 main {
   min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   color: var(--fg);
   background: var(--bg);
   font-family: var(--font);
 }
 
 .shell {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
   flex: 1;
-  min-height: 100dvh;
+  min-height: 0;
+  height: 100%;
 }
 
 h1 {
@@ -276,24 +279,25 @@ h1 {
   font-size: 1.5rem;
 }
 
-header {
+.rail {
   position: sticky;
   top: 0;
   z-index: 5;
   display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.75rem 1rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  height: 100dvh;
+  padding: 1rem 0.75rem;
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
 }
 
 .stage {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  min-width: 0;
   min-height: 0;
-  padding: 1rem;
+  overflow: auto;
 }
 
 .stage > * {
@@ -303,24 +307,66 @@ header {
 
 .nav-btn {
   font: inherit;
+  font-size: 1.05rem;
   color: var(--muted);
   background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
   cursor: pointer;
+}
+
+.nav-btn:hover {
+  color: var(--fg);
+  background: var(--surface);
 }
 
 .nav-btn.is-active {
   color: var(--fg);
-  background: var(--surface);
-  border-color: var(--accent);
+  font-weight: 700;
+  background: transparent;
 }
 
 .who {
-  margin: 0;
-  margin-right: auto;
-  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
   color: var(--muted);
+}
+
+.theme {
+  margin-top: auto;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 48rem) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .rail {
+    position: sticky;
+    top: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    height: auto;
+    padding: 0.5rem 0.75rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .who {
+    margin: 0 0.5rem 0 0;
+    padding: 0;
+  }
+
+  .theme {
+    margin-top: 0;
+    margin-left: auto;
+  }
 }
 </style>

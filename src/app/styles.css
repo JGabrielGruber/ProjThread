@@ -1,7 +1,14 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #app {
   margin: 0;
+  height: 100%;
   min-height: 100%;
 }
 
@@ -9,4 +16,16 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
+}
+
+button.primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+  border-radius: 999px;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }

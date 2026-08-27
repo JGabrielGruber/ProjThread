@@ -112,6 +112,7 @@ async function submitStages(): Promise<void> {
     </ul>
     <button
       type="button"
+      class="primary"
       :disabled="config.status !== 'ready'"
       @click="memberOpen = true"
     >
@@ -129,7 +130,7 @@ async function submitStages(): Promise<void> {
           <option value="member">member</option>
           <option value="owner">owner</option>
         </select>
-        <button type="submit" :disabled="config.status !== 'ready'">Add</button>
+        <button type="submit" class="primary" :disabled="config.status !== 'ready'">Add</button>
         <button type="button" @click="memberOpen = false">Cancel</button>
       </form>
     </Modal>
@@ -151,6 +152,7 @@ async function submitStages(): Promise<void> {
     </ul>
     <button
       type="button"
+      class="primary"
       :disabled="config.status !== 'ready'"
       @click="projectOpen = true"
     >
@@ -174,7 +176,7 @@ async function submitStages(): Promise<void> {
             {{ project.name }}
           </option>
         </select>
-        <button type="submit" :disabled="config.status !== 'ready'">Create</button>
+        <button type="submit" class="primary" :disabled="config.status !== 'ready'">Create</button>
         <button type="button" @click="projectOpen = false">Cancel</button>
       </form>
     </Modal>
@@ -186,7 +188,7 @@ async function submitStages(): Promise<void> {
     >
       <form class="form" @submit.prevent="submitRename">
         <input v-model="renameName" type="text" aria-label="Project name" />
-        <button type="submit" :disabled="config.status !== 'ready'">Save</button>
+        <button type="submit" class="primary" :disabled="config.status !== 'ready'">Save</button>
         <button type="button" @click="renameOpen = false">Cancel</button>
       </form>
     </Modal>
@@ -211,6 +213,7 @@ async function submitStages(): Promise<void> {
     </ul>
     <button
       type="button"
+      class="primary"
       :disabled="config.status !== 'ready'"
       @click="submitStages"
     >
@@ -223,12 +226,13 @@ async function submitStages(): Promise<void> {
 <style scoped>
 .config {
   max-width: 40rem;
+  padding: 1rem 1.25rem 4rem;
   color: var(--fg);
 }
 
 .block {
   margin: 0 0 1rem;
-  padding: 0.75rem;
+  padding: 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -237,11 +241,13 @@ async function submitStages(): Promise<void> {
 h2,
 h3 {
   margin: 0 0 0.75rem;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
 h3 {
   margin-top: 0;
+  font-size: 0.9375rem;
 }
 
 ul {
@@ -272,12 +278,18 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
+  padding: 0.5rem 0.75rem;
 }
 
 button {
   color: var(--accent);
   cursor: pointer;
+}
+
+button.primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 button:disabled {

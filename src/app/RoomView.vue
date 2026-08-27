@@ -93,6 +93,7 @@ function toggleActivityOnly(): void {
         </template>
       </li>
     </ol>
+    <div class="dock">
     <form class="composer" @submit.prevent="submit">
       <input
         v-model="draft"
@@ -101,7 +102,7 @@ function toggleActivityOnly(): void {
         aria-label="Chat message"
         :disabled="room.status !== 'ready'"
       />
-      <button type="submit" :disabled="room.status !== 'ready'">Send</button>
+      <button type="submit" class="primary" :disabled="room.status !== 'ready'">Send</button>
     </form>
     <form class="composer" @submit.prevent="submitActivity">
       <select
@@ -120,11 +121,16 @@ function toggleActivityOnly(): void {
       />
       <button type="submit" :disabled="room.status !== 'ready'">Record</button>
     </form>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .room {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  height: 100%;
   color: var(--fg);
 }
 
@@ -133,19 +139,20 @@ header {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: baseline;
-  margin-bottom: 1rem;
+  padding: 1rem 1.25rem 0.5rem;
 }
 
 h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.125rem;
+  font-weight: 700;
 }
 
 .stage,
 .muted {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.8125rem;
 }
 
 .back,
@@ -154,9 +161,9 @@ button {
   font: inherit;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
+  padding: 0.5rem 0.75rem;
 }
 
 .back,
@@ -165,10 +172,20 @@ button {
   cursor: pointer;
 }
 
+.back,
+.toggle {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0.25rem;
+}
+
 .tape {
   list-style: none;
-  margin: 0 0 1rem;
-  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0.5rem 1.25rem 1rem;
   color: var(--fg);
 }
 
@@ -176,10 +193,28 @@ button {
   margin: 0 0 0.5rem;
 }
 
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 11;
+  padding: 0.75rem 1.25rem 1rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
 .composer {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.composer:last-child {
+  margin-bottom: 0;
+}
+
+.toggle {
+  align-self: flex-start;
+  margin: 0 1.25rem 0.5rem;
 }
 
 .toggle,
@@ -194,8 +229,20 @@ select,
 textarea {
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.composer input,
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+button.primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 </style>

@@ -44,7 +44,7 @@ onUnmounted(() => {
   inset: 0;
   z-index: 20;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
   background: color-mix(in srgb, var(--bg) 75%, transparent);
@@ -52,7 +52,7 @@ onUnmounted(() => {
 
 .panel {
   width: min(24rem, 100%);
-  padding: 0.75rem;
+  padding: 1rem;
   color: var(--fg);
   background: var(--surface);
   border: 1px solid var(--border);

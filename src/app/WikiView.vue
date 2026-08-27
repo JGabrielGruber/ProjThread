@@ -118,7 +118,7 @@ async function link(): Promise<void> {
 </script>
 
 <template>
-  <section class="wiki">
+  <section class="wiki" :class="{ 'is-edit': editing }">
     <header>
       <button v-if="nodeId" type="button" class="back" @click="back">Back</button>
       <h2>{{ wiki.node?.title ?? "Wiki" }}</h2>
@@ -134,6 +134,7 @@ async function link(): Promise<void> {
       </ul>
       <button
         type="button"
+        class="primary compact"
         :disabled="wiki.status !== 'ready'"
         @click="openCreate"
       >
@@ -158,7 +159,7 @@ async function link(): Promise<void> {
             type="text"
             aria-label="Work item id"
           />
-          <button type="submit" :disabled="wiki.status !== 'ready'">Create</button>
+          <button type="submit" class="primary" :disabled="wiki.status !== 'ready'">Create</button>
           <button type="button" @click="cancelCreate">Cancel</button>
         </form>
       </Modal>
@@ -167,7 +168,7 @@ async function link(): Promise<void> {
     <template v-else-if="wiki.node">
       <template v-if="!editing">
         <article class="wiki-read" v-html="rendered" />
-        <button type="button" :disabled="wiki.status !== 'ready'" @click="startEdit">
+        <button type="button" class="primary compact" :disabled="wiki.status !== 'ready'" @click="startEdit">
           Edit
         </button>
         <form class="link" @submit.prevent="link">
@@ -195,7 +196,7 @@ async function link(): Promise<void> {
           aria-label="Source"
         />
         <div class="actions">
-          <button type="button" :disabled="wiki.status !== 'ready'" @click="save">
+          <button type="button" class="primary" :disabled="wiki.status !== 'ready'" @click="save">
             Save
           </button>
           <button type="button" @click="editing = false">Read</button>
@@ -210,7 +211,16 @@ async function link(): Promise<void> {
   display: flex;
   flex-direction: column;
   min-height: 100%;
+  height: 100%;
+  max-width: var(--measure);
+  padding: 1rem 1.25rem 4rem;
   color: var(--fg);
+}
+
+.wiki.is-edit {
+  max-width: none;
+  padding-bottom: 1rem;
+  overflow: hidden;
 }
 
 header {
@@ -223,13 +233,14 @@ header {
 
 h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
 .muted {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.8125rem;
 }
 
 .list {
@@ -242,30 +253,43 @@ h2 {
   display: flex;
   gap: 0.75rem;
   align-items: baseline;
-  margin: 0 0 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  margin: 0;
+  padding: 0.75rem 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
 }
 
-.form,
-.link {
+.form {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   max-width: 40rem;
-  margin: 0 0 1rem;
+  margin: 1rem 0;
+}
+
+.link {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  margin: 1rem 0 0;
+}
+
+.link input {
+  flex: 1 1 12rem;
 }
 
 .wiki-read {
   max-width: var(--measure);
   line-height: 1.65;
   margin: 0 0 1rem;
-  padding: 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 
 .wiki-read :deep(a) {
@@ -277,7 +301,7 @@ h2 {
   flex-direction: column;
   gap: 0.75rem;
   flex: 1;
-  min-height: 16rem;
+  min-height: 0;
   padding: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -313,7 +337,7 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
+  padding: 0.5rem 0.75rem;
 }
 
 .form textarea {
@@ -331,6 +355,30 @@ button,
   border: none;
   padding: 0;
   text-align: left;
+  font-size: 1rem;
+  color: var(--fg);
+}
+
+.title:hover {
+  color: var(--accent);
+}
+
+.back {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0;
+}
+
+button.primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+button.compact,
+.wiki > button {
+  align-self: flex-start;
+  width: auto;
 }
 
 button:disabled {

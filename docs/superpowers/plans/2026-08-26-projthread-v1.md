@@ -12,7 +12,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 4. Activity | `2026-08-26-projthread-activity.md` | D1-then-DO events, interleaved seq, Activity-only filter |
 | 5. Wiki | `2026-08-26-projthread-wiki.md` | Nodes, Markdown reader, work-item links; promote is not in this landing |
 | 6. Config | `2026-08-26-projthread-config.md` | PWA dialogs — members list/add, create/rename projects, stage labels/order; our Vue + tokens (PrimeVue dropped: v5 is not OSS); owner picker not in this landing |
-| 7. Skin + PWA | *(write after 6)* | Tokenized Grok/X-sharp, installability |
+| 7. Skin + PWA | `2026-08-27-projthread-skin.md` | Tokens (dark+light), tiny Modal, PWA manifest+SW |
 | 8. Deploy | *(write after 7)* | Custom domain as config. workers.dev + Access AUD already live |
 
-**Now:** write the Skin + PWA plan (plan 7). Do not implement Skin until that file exists.
+**Now:** execute plan 7 only. Do not start Deploy.

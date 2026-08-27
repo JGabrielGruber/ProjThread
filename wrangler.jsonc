@@ -18,5 +18,16 @@
       "database_id": "local",
       "migrations_dir": "migrations"
     }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "Room", "class_name": "Room" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Room"]
+    }
   ]
 }

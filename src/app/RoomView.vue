@@ -7,6 +7,8 @@ const route = useRoute();
 const router = useRouter();
 const room = useRoomStore();
 const draft = ref("");
+const activityType = ref<"note" | "decision" | "occurrence">("note");
+const activityBody = ref("");
 
 function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
@@ -36,11 +38,27 @@ async function back(): Promise<void> {
   await router.replace({ query });
 }
 
+function eventFor(eventId: string | null) {
+  if (!eventId) return undefined;
+  return room.events.find((row) => row.id === eventId);
+}
+
 function submit(): void {
   const body = draft.value.trim();
   if (!body) return;
   room.send(body);
   draft.value = "";
+}
+
+async function submitActivity(): Promise<void> {
+  const body = activityBody.value;
+  if (body.trim() === "") return;
+  await room.postEvent({ type: activityType.value, body });
+  activityBody.value = "";
+}
+
+function toggleActivityOnly(): void {
+  room.activityOnly = !room.activityOnly;
 }
 </script>
 
@@ -54,9 +72,28 @@ function submit(): void {
     <p v-if="room.status === 'loading'" class="muted">Connecting</p>
     <p v-else-if="room.status === 'error'" class="error">Could not open room</p>
     <p v-else-if="room.status === 'no_session'">No session</p>
-    <ol class="tape">
+    <button type="button" class="toggle" @click="toggleActivityOnly">
+      Activity only
+    </button>
+    <ol v-if="room.activityOnly" class="tape">
+      <li v-for="event in room.events" :key="event.id" class="line">
+        <span>{{ event.type }}</span>
+        <span v-if="event.body"> {{ event.body }}</span>
+        <span v-if="event.from_value || event.to_value" class="muted">
+          {{ event.from_value }} → {{ event.to_value }}
+        </span>
+      </li>
+    </ol>
+    <ol v-else class="tape">
       <li v-for="line in lines" :key="line.seq" class="line">
-        {{ line.body }}
+        <template v-if="line.kind === 'chat'">{{ line.body }}</template>
+        <template v-else>
+          <span v-if="eventFor(line.event_id)">
+            {{ eventFor(line.event_id)?.type }}
+            {{ eventFor(line.event_id)?.body }}
+          </span>
+          <span v-else class="muted">Activity</span>
+        </template>
       </li>
     </ol>
     <form class="composer" @submit.prevent="submit">
@@ -68,6 +105,23 @@ function submit(): void {
         :disabled="room.status !== 'ready'"
       />
       <button type="submit" :disabled="room.status !== 'ready'">Send</button>
+    </form>
+    <form class="composer" @submit.prevent="submitActivity">
+      <select
+        v-model="activityType"
+        aria-label="Activity type"
+        :disabled="room.status !== 'ready'"
+      >
+        <option value="note">note</option>
+        <option value="decision">decision</option>
+        <option value="occurrence">occurrence</option>
+      </select>
+      <textarea
+        v-model="activityBody"
+        aria-label="Activity body"
+        :disabled="room.status !== 'ready'"
+      />
+      <button type="submit" :disabled="room.status !== 'ready'">Record</button>
     </form>
   </section>
 </template>
@@ -132,10 +186,23 @@ button {
 .composer {
   display: flex;
   gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
+.toggle,
+select,
+textarea,
 input,
 button {
   font: inherit;
+}
+
+select,
+textarea {
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
 }
 </style>

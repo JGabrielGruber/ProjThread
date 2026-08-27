@@ -7,6 +7,8 @@ import { handleMe } from "./me.ts";
 import { d1SessionStore } from "./session.ts";
 import { handleAdminShell, isAdminPath } from "./shell.ts";
 
+export { Room } from "../room/room.ts";
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);

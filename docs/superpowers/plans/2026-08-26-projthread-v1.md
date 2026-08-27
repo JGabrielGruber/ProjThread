@@ -13,6 +13,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 5. Wiki | `2026-08-26-projthread-wiki.md` | Nodes, Markdown reader, work-item links; promote is not in this landing |
 | 6. Config | `2026-08-26-projthread-config.md` | PWA dialogs — members list/add, create/rename projects, stage labels/order; our Vue + tokens (PrimeVue dropped: v5 is not OSS); owner picker not in this landing |
 | 7. Skin + PWA | `2026-08-27-projthread-skin.md` | Tokens (dark+light), tiny Modal, PWA manifest+SW |
+| 7b. Chrome | `2026-08-27-projthread-chrome.md` | App shell, board cards (Move in modal), wiki create modal + edit surface, overlay status toast, config sections |
 | 8. Deploy | *(parked — no custom domain yet)* | Custom domain as config. workers.dev + Access AUD already live |
 
-**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy.
+**Now:** execute chrome only. Park plan 8 until a custom domain exists. Do not write or implement Deploy.

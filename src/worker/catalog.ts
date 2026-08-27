@@ -41,6 +41,33 @@ export type WorkItemRow = {
   updated_at: string;
 };
 
+export type WorkItemEventType =
+  | "stage_changed"
+  | "owner_changed"
+  | "decision"
+  | "occurrence"
+  | "note";
+
+export type WorkItemEventRow = {
+  id: string;
+  work_item_id: string;
+  organization_id: string;
+  type: WorkItemEventType;
+  from_value: string | null;
+  to_value: string | null;
+  body: string | null;
+  actor_id: string;
+  ref_node_id: string | null;
+  created_at: string;
+};
+
+export type WorkItemEventCommit = {
+  event: WorkItemEventRow;
+  stage_key?: string;
+  owner_id?: string | null;
+  updated_at?: string;
+};
+
 export type TenantBundle = {
   organization: { id: string; name: string; created_at: string };
   workspace: {
@@ -81,6 +108,8 @@ export type CatalogStore = {
   ): Promise<boolean>;
   insertTenantBundle(b: TenantBundle): Promise<void>;
   listOrganizations(): Promise<{ id: string; name: string }[]>;
+  listWorkItemEvents(workItemId: string): Promise<WorkItemEventRow[]>;
+  commitWorkItemEvent(commit: WorkItemEventCommit): Promise<void>;
 };
 
 const MEMBERSHIP_SELECT = `SELECT workspace.organization_id AS organization_id,
@@ -249,6 +278,67 @@ WHERE workspace_id = ? AND project_id IN (${placeholders})`,
         .prepare("SELECT id, name FROM organization ORDER BY created_at")
         .all<{ id: string; name: string }>();
       return results;
+    },
+    async listWorkItemEvents(workItemId) {
+      const { results } = await db
+        .prepare(
+          `SELECT id, work_item_id, organization_id, type, from_value, to_value, body, actor_id, ref_node_id, created_at
+FROM work_item_event
+WHERE work_item_id = ?
+ORDER BY created_at ASC, id ASC`,
+        )
+        .bind(workItemId)
+        .all<WorkItemEventRow>();
+      return results;
+    },
+    async commitWorkItemEvent(commit) {
+      const { event } = commit;
+      const statements = [
+        db
+          .prepare(
+            `INSERT INTO work_item_event (id, work_item_id, organization_id, type, from_value, to_value, body, actor_id, ref_node_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            event.id,
+            event.work_item_id,
+            event.organization_id,
+            event.type,
+            event.from_value,
+            event.to_value,
+            event.body,
+            event.actor_id,
+            event.ref_node_id,
+            event.created_at,
+          ),
+      ];
+      if (
+        commit.stage_key !== undefined ||
+        commit.owner_id !== undefined
+      ) {
+        const sets: string[] = [];
+        const values: unknown[] = [];
+        if (commit.stage_key !== undefined) {
+          sets.push("stage_key = ?");
+          values.push(commit.stage_key);
+        }
+        if (commit.owner_id !== undefined) {
+          sets.push("owner_id = ?");
+          values.push(commit.owner_id);
+        }
+        if (commit.updated_at !== undefined) {
+          sets.push("updated_at = ?");
+          values.push(commit.updated_at);
+        }
+        statements.push(
+          db
+            .prepare(
+              `UPDATE work_item SET ${sets.join(", ")} WHERE id = ?`,
+            )
+            .bind(...values, event.work_item_id),
+        );
+      }
+      await db.batch(statements);
     },
   };
 }

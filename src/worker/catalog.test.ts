@@ -7,6 +7,7 @@ import {
   type ProjectRow,
   type StageRow,
   type TenantBundle,
+  type WorkItemEventRow,
   type WorkItemRow,
 } from "./catalog.ts";
 
@@ -24,6 +25,7 @@ function memoryCatalog(): CatalogStore {
   const stages = new Map<string, StageRow>();
   const projects = new Map<string, ProjectRow & { created_at: string }>();
   const workItems = new Map<string, WorkItemRow>();
+  const events = new Map<string, WorkItemEventRow>();
 
   function membershipKey(workspaceId: string, principalId: string): string {
     return `${workspaceId}:${principalId}`;
@@ -119,6 +121,36 @@ function memoryCatalog(): CatalogStore {
     },
     async listOrganizations() {
       return [...organizations.values()].map((o) => ({ id: o.id, name: o.name }));
+    },
+    async listWorkItemEvents(workItemId) {
+      return [...events.values()]
+        .filter((row) => row.work_item_id === workItemId)
+        .sort((a, b) => {
+          if (a.created_at < b.created_at) return -1;
+          if (a.created_at > b.created_at) return 1;
+          if (a.id < b.id) return -1;
+          if (a.id > b.id) return 1;
+          return 0;
+        })
+        .map((row) => ({ ...row }));
+    },
+    async commitWorkItemEvent(commit) {
+      events.set(commit.event.id, { ...commit.event });
+      const item = workItems.get(commit.event.work_item_id);
+      if (!item) return;
+      if (commit.stage_key === undefined && commit.owner_id === undefined) {
+        return;
+      }
+      workItems.set(commit.event.work_item_id, {
+        ...item,
+        ...(commit.stage_key !== undefined
+          ? { stage_key: commit.stage_key }
+          : {}),
+        ...(commit.owner_id !== undefined ? { owner_id: commit.owner_id } : {}),
+        ...(commit.updated_at !== undefined
+          ? { updated_at: commit.updated_at }
+          : {}),
+      });
     },
   };
 }
@@ -296,5 +328,78 @@ describe("work items", () => {
       ),
       false,
     );
+  });
+});
+
+describe("work item events", () => {
+  async function seeded(): Promise<{
+    store: CatalogStore;
+    bundle: TenantBundle;
+  }> {
+    const store = memoryCatalog();
+    const bundle = sampleBundle();
+    await store.insertTenantBundle(bundle);
+    await store.insertWorkItem({
+      id: "wi-1",
+      project_id: bundle.project.id,
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      title: "First card",
+      stage_key: "backlog",
+      owner_id: null,
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    });
+    return { store, bundle };
+  }
+
+  it("commitWorkItemEvent note lists the row and leaves stage backlog", async () => {
+    const { store, bundle } = await seeded();
+    const event = {
+      id: "ev-1",
+      work_item_id: "wi-1",
+      organization_id: bundle.organization.id,
+      type: "note" as const,
+      from_value: null,
+      to_value: null,
+      body: "keep",
+      actor_id: bundle.principal.id,
+      ref_node_id: null,
+      created_at: "2026-01-03T00:00:00.000Z",
+    };
+    await store.commitWorkItemEvent({ event });
+    const listed = await store.listWorkItemEvents("wi-1");
+    assert.equal(listed.length, 1);
+    assert.deepEqual(listed[0], event);
+    const item = await store.getWorkItem("wi-1");
+    assert.equal(item?.stage_key, "backlog");
+  });
+
+  it("commitWorkItemEvent stage_changed patches the work item stage", async () => {
+    const { store, bundle } = await seeded();
+    await store.commitWorkItemEvent({
+      event: {
+        id: "ev-2",
+        work_item_id: "wi-1",
+        organization_id: bundle.organization.id,
+        type: "stage_changed",
+        from_value: "backlog",
+        to_value: "doing",
+        body: "start",
+        actor_id: bundle.principal.id,
+        ref_node_id: null,
+        created_at: "2026-01-03T00:00:00.000Z",
+      },
+      stage_key: "doing",
+      updated_at: "2026-01-03T00:00:00.000Z",
+    });
+    const item = await store.getWorkItem("wi-1");
+    assert.equal(item?.stage_key, "doing");
+    assert.equal(item?.updated_at, "2026-01-03T00:00:00.000Z");
+  });
+
+  it("listWorkItemEvents for a missing item is empty", async () => {
+    const store = memoryCatalog();
+    assert.deepEqual(await store.listWorkItemEvents("missing"), []);
   });
 });

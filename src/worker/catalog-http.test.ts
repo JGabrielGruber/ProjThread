@@ -123,6 +123,8 @@ function memoryCatalog(): MemoryCatalog {
     async listOrganizations() {
       throw new Error("unused");
     },
+    listWorkItemEvents: unused,
+    commitWorkItemEvent: unused,
     seedProject(row) {
       projects.set(row.id, { ...row });
     },
@@ -146,6 +148,8 @@ function stubCatalog(): CatalogStore {
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
     listOrganizations: unused,
+    listWorkItemEvents: unused,
+    commitWorkItemEvent: unused,
   };
 }
 

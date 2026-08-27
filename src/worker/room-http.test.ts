@@ -29,6 +29,8 @@ function stubCatalog(): CatalogStore {
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
     listOrganizations: unused,
+    listWorkItemEvents: unused,
+    commitWorkItemEvent: unused,
   };
 }
 

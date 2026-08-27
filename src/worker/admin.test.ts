@@ -36,6 +36,8 @@ function stubCatalog(): CatalogStore {
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
     listOrganizations: unused,
+    listWorkItemEvents: unused,
+    commitWorkItemEvent: unused,
   };
 }
 
@@ -120,6 +122,8 @@ function memoryCatalog(): CatalogStore {
         name: o.name,
       }));
     },
+    listWorkItemEvents: unused,
+    commitWorkItemEvent: unused,
   };
 }
 

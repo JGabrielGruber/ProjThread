@@ -4,6 +4,7 @@ import { handleCatalog } from "./catalog-http.ts";
 import { d1CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import { handleMe } from "./me.ts";
+import { handleRoom } from "./room-http.ts";
 import { d1SessionStore } from "./session.ts";
 import { handleAdminShell, isAdminPath } from "./shell.ts";
 
@@ -22,6 +23,10 @@ export default {
 
     if (url.pathname === "/api/me") {
       return handleMe(request, env, store, catalog);
+    }
+
+    if (url.pathname.startsWith("/api/rooms/")) {
+      return handleRoom(request, env, store, catalog);
     }
 
     if (

@@ -7,6 +7,7 @@ import { useBoardStore, type WorkItem } from "./stores/board.ts";
 const route = useRoute();
 const board = useBoardStore();
 const draft = ref("");
+const addOpen = ref(false);
 const moveReason = ref("");
 const pendingMove = ref<{ item: WorkItem; to: string } | null>(null);
 
@@ -32,11 +33,22 @@ function itemsFor(stageKey: string): WorkItem[] {
   return board.items.filter((item) => item.stage_key === stageKey);
 }
 
+function openAdd(): void {
+  draft.value = "";
+  addOpen.value = true;
+}
+
+function cancelAdd(): void {
+  addOpen.value = false;
+  draft.value = "";
+}
+
 async function submit(): Promise<void> {
   const title = draft.value.trim();
   if (!title) return;
   await board.createCard(title);
-  draft.value = "";
+  if (board.status === "error") return;
+  cancelAdd();
 }
 
 async function onStage(item: WorkItem, event: Event): Promise<void> {
@@ -65,6 +77,23 @@ async function confirmMove(): Promise<void> {
 <template>
   <p v-if="board.status === 'error'" class="error">Could not load board</p>
   <Modal
+    :open="addOpen"
+    title="Add card"
+    labelled-by="add-card-title"
+    @close="cancelAdd"
+  >
+    <form class="form" @submit.prevent="submit">
+      <input
+        v-model="draft"
+        type="text"
+        name="title"
+        aria-label="New card title"
+      />
+      <button type="submit">Add</button>
+      <button type="button" @click="cancelAdd">Cancel</button>
+    </form>
+  </Modal>
+  <Modal
     :open="pendingMove !== null"
     title="Move reason"
     labelled-by="move-reason-title"
@@ -83,10 +112,14 @@ async function confirmMove(): Promise<void> {
   <div class="board">
     <section v-for="stage in columns" :key="stage.key" class="column">
       <h2>{{ stage.label }}</h2>
-      <form v-if="stage.key === 'backlog'" class="composer" @submit.prevent="submit">
-        <input v-model="draft" type="text" name="title" aria-label="New card title" />
-        <button type="submit">Add</button>
-      </form>
+      <button
+        v-if="stage.key === 'backlog'"
+        type="button"
+        class="composer"
+        @click="openAdd"
+      >
+        Add
+      </button>
       <article
         v-for="item in itemsFor(stage.key)"
         :key="item.id"

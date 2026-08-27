@@ -72,6 +72,13 @@ const hasBoardQuery = computed(
   () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
 );
 
+async function openBoard(): Promise<void> {
+  const query: Record<string, string> = {};
+  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
+  if (projectQuery.value) query.project = projectQuery.value;
+  await router.replace({ query });
+}
+
 async function openWiki(): Promise<void> {
   const query: Record<string, string> = { wiki: "1" };
   if (workspaceQuery.value) query.workspace = workspaceQuery.value;
@@ -146,6 +153,7 @@ watch(
     <section v-else>
       <header>
         <p class="who">{{ session.principal.display_name }}</p>
+        <button type="button" class="wiki-nav" @click="openBoard">Kanban</button>
         <button type="button" class="wiki-nav" @click="openWiki">Wiki</button>
         <button type="button" class="wiki-nav" @click="openConfig">Config</button>
         <button type="button" class="wiki-nav" @click="cycleTheme">

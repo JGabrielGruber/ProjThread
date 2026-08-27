@@ -5,8 +5,8 @@ Read this file first after compact. It is the project map, not the archive.
 **Repo:** https://github.com/JGabrielGruber/ProjThread (also local `~/Projects/ProjThread`)
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie on `/api/*` and WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
-**Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki**) = our components, tokenized Grok/X-sharp skin (no hardcoded colors). **PWA config + super-admin** = PrimeVue (gospel OK). No DataGrid Pro; dialogs like dotproj. Daisy is not the kit. Nord rejected.
-**Now:** write the Config plan (see `docs/STATUS.md`). Do not implement Config. Do not start a slice that STATUS does not name.
+**Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki** + **config**) and **super-admin** = our components, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
+**Now:** write the Skin + PWA plan (see `docs/STATUS.md`). Do not implement Skin. Do not start a slice that STATUS does not name.
 
 ## Pickup (coding agents, including Grok Build)
 

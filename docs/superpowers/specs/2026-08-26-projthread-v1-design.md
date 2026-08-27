@@ -81,10 +81,10 @@ Workspace ≠ Project. Product name ≠ the Project entity. In dotproj, Category
 | Surface | Kit |
 | --- | --- |
 | Kanban, room, wiki | **Our Vue.** Tokenized Grok/X/SpaceX-sharp (dark-first, high contrast, dense). Wiki **read** is long-form (phone-calm Markdown), not kanban density. **No hex in components** — semantic CSS variables (`--bg`, `--fg`, `--muted`, `--accent`, `--danger`, `--radius`, `--font`). Light is a second token set. |
-| PWA config (projects, members, stages) | **PrimeVue.** Gospel theme allowed. **List + dialog**, not DataGrid Pro. |
-| Super-admin `/admin` | PrimeVue. Access. Session mint, orgs, principals. |
+| PWA config (projects, members, stages) | **Our Vue + tokens.** **List + dialog**, not DataGrid. PrimeVue is out (v5 is not OSS). |
+| Super-admin `/admin` | **Our Vue + tokens.** Access. Session mint, orgs, principals. |
 
-Prime is **lazy-imported on config/admin routes only**. It does not paint the tape, the kanban, or the wiki.
+No PrimeVue on any surface. Config and admin use the same tokenized controls as the product screens.
 
 First load may be fat. After boot, smooth on a phone and on 180 Hz.
 
@@ -241,13 +241,13 @@ Worker catalog handlers stay inside **10 ms CPU** (Free). Room work is the DO (3
 3. Room DO + WS tape (chat only)  
 4. Activity D1-then-DO, interleaved render, Activity-only filter  
 5. Wiki: nodes + links + promote from room + Markdown read/edit (`payload_kind=markdown`). Blob columns exist; no upload.  
-6. PWA config (PrimeVue dialogs): members, projects, stages  
+6. PWA config (list + dialog): members, projects, stages  
 7. Tokens (Grok/X-sharp), PWA installability  
 8. Deploy: `APP_ORIGIN`, Access, D1, custom domain as config  
 
 ## Named absences
 
-MCP. Destination login / public signup. Google OAuth. Bearer agents. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).
+MCP. Destination login / public signup. Google OAuth. Bearer agents. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. **PrimeVue** (v5 is not OSS; do not re-add). PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).
 
 ## Load classes
 

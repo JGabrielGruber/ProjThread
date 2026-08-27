@@ -41,7 +41,8 @@ export default {
 
     if (
       url.pathname.startsWith("/api/workspaces") ||
-      url.pathname.startsWith("/api/work-items")
+      url.pathname.startsWith("/api/work-items") ||
+      url.pathname.startsWith("/api/projects")
     ) {
       return handleCatalog(request, env, store, catalog);
     }

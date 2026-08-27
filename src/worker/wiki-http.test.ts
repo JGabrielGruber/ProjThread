@@ -30,9 +30,14 @@ function stubCatalog(): CatalogStore {
   return {
     listMemberships: unused,
     getMembership: unused,
+    listMembers: unused,
+    insertMembership: unused,
     listProjects: unused,
     getProject: unused,
+    insertProject: unused,
+    updateProjectName: unused,
     listStages: unused,
+    replaceStages: unused,
     listWorkItems: unused,
     getWorkItem: unused,
     insertWorkItem: unused,
@@ -80,9 +85,14 @@ function memoryCatalog(): MemoryCatalog {
         role: row.role,
       };
     },
+    listMembers: unused,
+    insertMembership: unused,
     listProjects: unused,
     getProject: unused,
+    insertProject: unused,
+    updateProjectName: unused,
     listStages: unused,
+    replaceStages: unused,
     listWorkItems: unused,
     async getWorkItem(id) {
       const row = workItems.get(id);

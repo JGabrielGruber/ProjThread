@@ -9,6 +9,7 @@ import {
   type TenantBundle,
   type WorkItemEventRow,
   type WorkItemRow,
+  type WorkspaceMemberRow,
 } from "./catalog.ts";
 
 function memoryCatalog(): CatalogStore {
@@ -63,6 +64,27 @@ function memoryCatalog(): CatalogStore {
     async getMembership(workspaceId, principalId) {
       return toMembership(workspaceId, principalId);
     },
+    async listMembers(workspaceId) {
+      const out: WorkspaceMemberRow[] = [];
+      for (const row of memberships.values()) {
+        if (row.workspace_id !== workspaceId) continue;
+        const principal = principals.get(row.principal_id);
+        out.push({
+          workspace_id: row.workspace_id,
+          principal_id: row.principal_id,
+          display_name: principal?.display_name ?? "",
+          type: principal?.type ?? "human",
+          role: row.role,
+        });
+      }
+      return out;
+    },
+    async insertMembership(row) {
+      const key = membershipKey(row.workspace_id, row.principal_id);
+      if (memberships.has(key)) return "exists";
+      memberships.set(key, { ...row });
+      return "inserted";
+    },
     async listProjects(workspaceId) {
       return [...projects.values()]
         .filter((p) => p.workspace_id === workspaceId)
@@ -72,11 +94,37 @@ function memoryCatalog(): CatalogStore {
       const row = projects.get(id);
       return row ? { ...row } : null;
     },
+    async insertProject(row) {
+      projects.set(row.id, { ...row });
+    },
+    async updateProjectName(id, name) {
+      const row = projects.get(id);
+      if (!row) return false;
+      projects.set(id, { ...row, name });
+      return true;
+    },
     async listStages(workspaceId) {
       return [...stages.values()]
         .filter((s) => s.workspace_id === workspaceId)
         .sort((a, b) => a.position - b.position)
         .map((s) => ({ ...s }));
+    },
+    async replaceStages(workspaceId, next) {
+      const existing = [...stages.values()].filter(
+        (s) => s.workspace_id === workspaceId,
+      );
+      const existingKeys = new Set(existing.map((s) => s.key));
+      const incomingKeys = new Set(next.map((s) => s.key));
+      if (
+        existingKeys.size !== incomingKeys.size ||
+        [...existingKeys].some((key) => !incomingKeys.has(key))
+      ) {
+        return false;
+      }
+      for (const stage of next) {
+        stages.set(`${workspaceId}:${stage.key}`, { ...stage });
+      }
+      return true;
     },
     async listWorkItems(workspaceId, projectIds) {
       if (projectIds.length === 0) return [];
@@ -401,5 +449,87 @@ describe("work item events", () => {
   it("listWorkItemEvents for a missing item is empty", async () => {
     const store = memoryCatalog();
     assert.deepEqual(await store.listWorkItemEvents("missing"), []);
+  });
+});
+
+describe("config catalog writes", () => {
+  it("listMembers returns the seeded owner and empty for other workspaces", async () => {
+    const store = memoryCatalog();
+    await store.insertTenantBundle(sampleBundle());
+    const members = await store.listMembers("ws-1");
+    assert.equal(members.length, 1);
+    assert.equal(members[0]?.principal_id, "prin-1");
+    assert.equal(members[0]?.display_name, "José");
+    assert.equal(members[0]?.role, "owner");
+    assert.deepEqual(await store.listMembers("other"), []);
+  });
+
+  it("insertMembership is inserted then exists without changing role", async () => {
+    const store = memoryCatalog();
+    await store.insertTenantBundle(sampleBundle());
+    const row = {
+      workspace_id: "ws-1",
+      principal_id: "prin-2",
+      role: "member" as const,
+    };
+    assert.equal(await store.insertMembership(row), "inserted");
+    assert.equal(await store.insertMembership({ ...row, role: "owner" }), "exists");
+    const members = await store.listMembers("ws-1");
+    assert.equal(members.length, 2);
+  });
+
+  it("insertProject adds a child under proj-1 named Barn", async () => {
+    const store = memoryCatalog();
+    await store.insertTenantBundle(sampleBundle());
+    await store.insertProject({
+      id: "proj-barn",
+      workspace_id: "ws-1",
+      organization_id: "org-1",
+      parent_id: "proj-1",
+      name: "Barn",
+      created_at: "2026-01-02T00:00:00.000Z",
+    });
+    const projects = await store.listProjects("ws-1");
+    const barn = projects.find((p) => p.id === "proj-barn");
+    assert.equal(barn?.name, "Barn");
+    assert.equal(barn?.parent_id, "proj-1");
+  });
+
+  it("updateProjectName updates or returns false when missing", async () => {
+    const store = memoryCatalog();
+    await store.insertTenantBundle(sampleBundle());
+    assert.equal(await store.updateProjectName("proj-1", "Farm"), true);
+    const project = await store.getProject("proj-1");
+    assert.equal(project?.name, "Farm");
+    assert.equal(await store.updateProjectName("missing", "Nope"), false);
+  });
+
+  it("replaceStages reorders existing keys and rejects a different key set", async () => {
+    const store = memoryCatalog();
+    await store.insertTenantBundle(sampleBundle());
+    const ok = await store.replaceStages("ws-1", [
+      { workspace_id: "ws-1", key: "doing", label: "Now", position: 0 },
+      { workspace_id: "ws-1", key: "backlog", label: "Backlog", position: 1 },
+      { workspace_id: "ws-1", key: "done", label: "Done", position: 2 },
+    ]);
+    assert.equal(ok, true);
+    assert.deepEqual(await store.listStages("ws-1"), [
+      { workspace_id: "ws-1", key: "doing", label: "Now", position: 0 },
+      { workspace_id: "ws-1", key: "backlog", label: "Backlog", position: 1 },
+      { workspace_id: "ws-1", key: "done", label: "Done", position: 2 },
+    ]);
+    const missingDone = await store.replaceStages("ws-1", [
+      { workspace_id: "ws-1", key: "doing", label: "Now", position: 0 },
+      { workspace_id: "ws-1", key: "backlog", label: "Changed", position: 1 },
+    ]);
+    assert.equal(missingDone, false);
+    const extra = await store.replaceStages("ws-1", [
+      { workspace_id: "ws-1", key: "doing", label: "Now", position: 0 },
+      { workspace_id: "ws-1", key: "backlog", label: "Changed", position: 1 },
+      { workspace_id: "ws-1", key: "done", label: "Done", position: 2 },
+      { workspace_id: "ws-1", key: "nope", label: "Nope", position: 3 },
+    ]);
+    assert.equal(extra, false);
+    assert.equal((await store.listStages("ws-1")).find((s) => s.key === "backlog")?.label, "Backlog");
   });
 });

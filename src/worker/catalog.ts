@@ -68,6 +68,20 @@ export type WorkItemEventCommit = {
   updated_at?: string;
 };
 
+export type WorkspaceMemberRow = {
+  workspace_id: string;
+  principal_id: string;
+  display_name: string;
+  type: "human" | "agent" | "service";
+  role: "owner" | "member";
+};
+
+export type MembershipWrite = {
+  workspace_id: string;
+  principal_id: string;
+  role: "owner" | "member";
+};
+
 export type TenantBundle = {
   organization: { id: string; name: string; created_at: string };
   workspace: {
@@ -92,9 +106,14 @@ export type CatalogStore = {
     workspaceId: string,
     principalId: string,
   ): Promise<Membership | null>;
+  listMembers(workspaceId: string): Promise<WorkspaceMemberRow[]>;
+  insertMembership(row: MembershipWrite): Promise<"inserted" | "exists">;
   listProjects(workspaceId: string): Promise<ProjectRow[]>;
   getProject(id: string): Promise<(ProjectRow & { created_at: string }) | null>;
+  insertProject(row: ProjectRow & { created_at: string }): Promise<void>;
+  updateProjectName(id: string, name: string): Promise<boolean>;
   listStages(workspaceId: string): Promise<StageRow[]>;
+  replaceStages(workspaceId: string, stages: StageRow[]): Promise<boolean>;
   listWorkItems(
     workspaceId: string,
     projectIds: string[],
@@ -138,6 +157,31 @@ export function d1CatalogStore(db: D1Database): CatalogStore {
         .bind(workspaceId, principalId)
         .first<Membership>();
     },
+    async listMembers(workspaceId) {
+      const { results } = await db
+        .prepare(
+          `SELECT membership.workspace_id AS workspace_id,
+       membership.principal_id AS principal_id,
+       principal.display_name AS display_name,
+       principal.type AS type,
+       membership.role AS role
+FROM membership
+INNER JOIN principal ON principal.id = membership.principal_id
+WHERE membership.workspace_id = ?`,
+        )
+        .bind(workspaceId)
+        .all<WorkspaceMemberRow>();
+      return results;
+    },
+    async insertMembership(row) {
+      const result = (await db
+        .prepare(
+          "INSERT OR IGNORE INTO membership (workspace_id, principal_id, role) VALUES (?, ?, ?)",
+        )
+        .bind(row.workspace_id, row.principal_id, row.role)
+        .run()) as { meta?: { changes?: number } };
+      return result.meta?.changes === 0 ? "exists" : "inserted";
+    },
     async listProjects(workspaceId) {
       const { results } = await db
         .prepare(
@@ -155,6 +199,28 @@ export function d1CatalogStore(db: D1Database): CatalogStore {
         .bind(id)
         .first<ProjectRow & { created_at: string }>();
     },
+    async insertProject(row) {
+      await db
+        .prepare(
+          "INSERT INTO project (id, workspace_id, organization_id, parent_id, name, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          row.id,
+          row.workspace_id,
+          row.organization_id,
+          row.parent_id,
+          row.name,
+          row.created_at,
+        )
+        .run();
+    },
+    async updateProjectName(id, name) {
+      const row = await db
+        .prepare("UPDATE project SET name = ? WHERE id = ? RETURNING id")
+        .bind(name, id)
+        .first<{ id: string }>();
+      return row != null;
+    },
     async listStages(workspaceId) {
       const { results } = await db
         .prepare(
@@ -163,6 +229,26 @@ export function d1CatalogStore(db: D1Database): CatalogStore {
         .bind(workspaceId)
         .all<StageRow>();
       return results;
+    },
+    async replaceStages(workspaceId, stages) {
+      const existing = await this.listStages(workspaceId);
+      const existingKeys = new Set(existing.map((s) => s.key));
+      const incomingKeys = new Set(stages.map((s) => s.key));
+      if (
+        existingKeys.size !== incomingKeys.size ||
+        [...existingKeys].some((key) => !incomingKeys.has(key))
+      ) {
+        return false;
+      }
+      const statements = stages.map((stage) =>
+        db
+          .prepare(
+            "UPDATE stage SET label = ?, position = ? WHERE workspace_id = ? AND key = ?",
+          )
+          .bind(stage.label, stage.position, workspaceId, stage.key),
+      );
+      await db.batch(statements);
+      return true;
     },
     async listWorkItems(workspaceId, projectIds) {
       if (projectIds.length === 0) return [];

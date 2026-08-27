@@ -1,5 +1,7 @@
 # ProjThread Config Implementation Plan
 
+> **Landed correction:** PrimeVue 5 is not OSS (PrimeUI license + key). ConfigView is our Vue + tokens (same list + dialog). `src/app/prime.ts` is gone. Do not re-add primevue.
+
 > For Grok Build: one session, compact. Scout only if a file is not where this plan says. Do not add tests this plan did not ask for. Do not dispatch reviewer or superpowers:subagent-driven-development sub-agents. Stop when STATUS is updated.
 
 **Goal:** Smallest PWA operator Config: list/add members, create/rename projects (forest via `parent_id` on create), edit stage labels/order. PrimeVue on the Config screen only.

@@ -7,6 +7,7 @@ import type { Project } from "./stores/board.ts";
 
 const RoomView = defineAsyncComponent(() => import("./RoomView.vue"));
 const WikiView = defineAsyncComponent(() => import("./WikiView.vue"));
+const ConfigView = defineAsyncComponent(() => import("./ConfigView.vue"));
 
 const session = useSessionStore();
 const route = useRoute();
@@ -28,12 +29,22 @@ const wikiQuery = computed(
     queryString(route.query.wiki) === "1" ||
     Boolean(queryString(route.query.node)),
 );
+const configQuery = computed(
+  () => queryString(route.query.config) === "1",
+);
 const hasBoardQuery = computed(
   () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
 );
 
 async function openWiki(): Promise<void> {
   const query: Record<string, string> = { wiki: "1" };
+  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
+  if (projectQuery.value) query.project = projectQuery.value;
+  await router.replace({ query });
+}
+
+async function openConfig(): Promise<void> {
+  const query: Record<string, string> = { config: "1" };
   if (workspaceQuery.value) query.workspace = workspaceQuery.value;
   if (projectQuery.value) query.project = projectQuery.value;
   await router.replace({ query });
@@ -100,9 +111,11 @@ watch(
       <header>
         <p class="who">{{ session.principal.display_name }}</p>
         <button type="button" class="wiki-nav" @click="openWiki">Wiki</button>
+        <button type="button" class="wiki-nav" @click="openConfig">Config</button>
       </header>
       <RoomView v-if="itemQuery" />
       <WikiView v-else-if="wikiQuery" />
+      <ConfigView v-else-if="configQuery" />
       <KanbanBoard v-else-if="hasBoardQuery" />
     </section>
   </main>

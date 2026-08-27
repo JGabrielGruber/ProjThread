@@ -15,4 +15,4 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 7. Skin + PWA | `2026-08-27-projthread-skin.md` | Tokens (dark+light), tiny Modal, PWA manifest+SW |
 | 8. Deploy | *(write after 7)* | Custom domain as config. workers.dev + Access AUD already live |
 
-**Now:** execute plan 7 only. Do not start Deploy.
+**Now:** write the Deploy plan (plan 8). Do not implement Deploy until that file exists.

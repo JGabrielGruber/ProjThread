@@ -222,7 +222,7 @@ h2 {
 }
 
 .wiki-read {
-  max-width: 65ch;
+  max-width: var(--measure);
   line-height: 1.65;
   margin: 0 0 1rem;
 }

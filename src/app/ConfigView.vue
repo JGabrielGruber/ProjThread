@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import Modal from "./Modal.vue";
 import {
   useConfigStore,
   type ConfigStage,
@@ -118,15 +119,13 @@ async function submitStages(): Promise<void> {
     >
       Add member
     </button>
-    <div
-      v-if="memberOpen"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="member-title"
+    <Modal
+      :open="memberOpen"
+      title="Add member"
+      labelled-by="member-title"
+      @close="memberOpen = false"
     >
       <form class="form" @submit.prevent="submitMember">
-        <h4 id="member-title">Add member</h4>
         <input v-model="principalId" type="text" aria-label="Principal id" />
         <select v-model="memberRole" aria-label="Role">
           <option value="member">member</option>
@@ -135,7 +134,7 @@ async function submitStages(): Promise<void> {
         <button type="submit" :disabled="config.status !== 'ready'">Add</button>
         <button type="button" @click="memberOpen = false">Cancel</button>
       </form>
-    </div>
+    </Modal>
 
     <h3>Projects</h3>
     <ul>
@@ -157,15 +156,13 @@ async function submitStages(): Promise<void> {
     >
       Create project
     </button>
-    <div
-      v-if="projectOpen"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-title"
+    <Modal
+      :open="projectOpen"
+      title="Create project"
+      labelled-by="project-title"
+      @close="projectOpen = false"
     >
       <form class="form" @submit.prevent="submitProject">
-        <h4 id="project-title">Create project</h4>
         <input v-model="projectName" type="text" aria-label="Project name" />
         <select v-model="projectParentKey" aria-label="Parent">
           <option value="">root</option>
@@ -180,21 +177,19 @@ async function submitStages(): Promise<void> {
         <button type="submit" :disabled="config.status !== 'ready'">Create</button>
         <button type="button" @click="projectOpen = false">Cancel</button>
       </form>
-    </div>
-    <div
-      v-if="renameOpen"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="rename-title"
+    </Modal>
+    <Modal
+      :open="renameOpen"
+      title="Rename project"
+      labelled-by="rename-title"
+      @close="renameOpen = false"
     >
       <form class="form" @submit.prevent="submitRename">
-        <h4 id="rename-title">Rename project</h4>
         <input v-model="renameName" type="text" aria-label="Project name" />
         <button type="submit" :disabled="config.status !== 'ready'">Save</button>
         <button type="button" @click="renameOpen = false">Cancel</button>
       </form>
-    </div>
+    </Modal>
 
     <h3>Stages</h3>
     <ul>
@@ -228,18 +223,13 @@ async function submitStages(): Promise<void> {
 }
 
 h2,
-h3,
-h4 {
+h3 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
 }
 
 h3 {
   margin-top: 1.5rem;
-}
-
-h4 {
-  font-size: 1rem;
 }
 
 .muted {
@@ -270,14 +260,6 @@ li {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-width: 24rem;
-}
-
-.modal {
-  margin: 0.75rem 0 1rem;
-  padding: 0.75rem;
-  border: 1px solid var(--muted);
-  border-radius: var(--radius);
 }
 
 input,

@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import KanbanBoard from "./KanbanBoard.vue";
 import { useSessionStore, type Membership } from "./stores/session.ts";
 import type { Project } from "./stores/board.ts";
+
+type ThemeMode = "system" | "dark" | "light";
+const THEME_ORDER: ThemeMode[] = ["system", "dark", "light"];
 
 const RoomView = defineAsyncComponent(() => import("./RoomView.vue"));
 const WikiView = defineAsyncComponent(() => import("./WikiView.vue"));
@@ -13,7 +16,40 @@ const session = useSessionStore();
 const route = useRoute();
 const router = useRouter();
 
+const themeMode = ref<ThemeMode>("system");
+
+function readTheme(): ThemeMode {
+  try {
+    const stored = localStorage.getItem("pt-theme");
+    if (stored === "dark" || stored === "light") return stored;
+  } catch {
+    /* ignore */
+  }
+  return "system";
+}
+
+function applyTheme(mode: ThemeMode): void {
+  themeMode.value = mode;
+  try {
+    if (mode === "system") {
+      localStorage.removeItem("pt-theme");
+      delete document.documentElement.dataset.theme;
+    } else {
+      localStorage.setItem("pt-theme", mode);
+      document.documentElement.dataset.theme = mode;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function cycleTheme(): void {
+  const i = THEME_ORDER.indexOf(themeMode.value);
+  applyTheme(THEME_ORDER[(i + 1) % THEME_ORDER.length]);
+}
+
 onMounted(() => {
+  themeMode.value = readTheme();
   void session.loadMe();
 });
 
@@ -112,6 +148,9 @@ watch(
         <p class="who">{{ session.principal.display_name }}</p>
         <button type="button" class="wiki-nav" @click="openWiki">Wiki</button>
         <button type="button" class="wiki-nav" @click="openConfig">Config</button>
+        <button type="button" class="wiki-nav" @click="cycleTheme">
+          {{ themeMode }}
+        </button>
       </header>
       <RoomView v-if="itemQuery" />
       <WikiView v-else-if="wikiQuery" />

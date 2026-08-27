@@ -9,10 +9,10 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **1. Foundation** | `2026-08-26-projthread-foundation.md` | One Worker, assets, D1, Access, session vending, `/api/me`, empty PWA “no session” |
 | 2. Catalog | `2026-08-26-projthread-catalog.md` | Org, workspace, project forest, stages, work_item CRUD, kanban |
 | 3. Room | `2026-08-26-projthread-room.md` | Durable Object + hibernatable WS, chat tape, resume `last_seq` |
-| 4. Activity | *(write after 3)* | D1-then-DO events, interleaved seq, Activity-only filter |
+| 4. Activity | `2026-08-26-projthread-activity.md` | D1-then-DO events, interleaved seq, Activity-only filter |
 | 5. Wiki | *(write after 4)* | Nodes, Markdown reader, links, promote; blob columns unused |
 | 6. Config | *(write after 5)* | PrimeVue dialogs: members, projects, stages |
 | 7. Skin + PWA | *(write after 6)* | Tokenized Grok/X-sharp, installability |
 | 8. Deploy | *(write after 7)* | `APP_ORIGIN`, Access, remote D1, domain as config |
 
-**Now:** write plan 4 (Activity). Do not implement Activity until that plan exists.
+**Now:** execute plan 4 (Activity) only. Do not start Wiki.

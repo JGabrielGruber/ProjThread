@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import Modal from "./Modal.vue";
 import { useBoardStore, type WorkItem } from "./stores/board.ts";
 
 const route = useRoute();
 const board = useBoardStore();
 const draft = ref("");
 const moveReason = ref("");
+const pendingMove = ref<{ item: WorkItem; to: string } | null>(null);
 
 function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
@@ -39,18 +41,45 @@ async function submit(): Promise<void> {
 
 async function onStage(item: WorkItem, event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
-  await board.moveCard(item.id, select.value, moveReason.value);
+  const to = select.value;
+  select.value = item.stage_key;
+  if (to === item.stage_key) return;
+  pendingMove.value = { item, to };
+  moveReason.value = "";
+}
+
+function cancelMove(): void {
+  pendingMove.value = null;
+  moveReason.value = "";
+}
+
+async function confirmMove(): Promise<void> {
+  const pending = pendingMove.value;
+  if (!pending || !moveReason.value.trim()) return;
+  await board.moveCard(pending.item.id, pending.to, moveReason.value);
+  if (board.status === "error") return;
+  cancelMove();
 }
 </script>
 
 <template>
   <p v-if="board.status === 'error'" class="error">Could not load board</p>
-  <input
-    v-model="moveReason"
-    type="text"
-    aria-label="Move reason"
-    class="reason"
-  />
+  <Modal
+    :open="pendingMove !== null"
+    title="Move reason"
+    labelled-by="move-reason-title"
+    @close="cancelMove"
+  >
+    <form class="form" @submit.prevent="confirmMove">
+      <input
+        v-model="moveReason"
+        type="text"
+        aria-label="Move reason"
+      />
+      <button type="submit">Move</button>
+      <button type="button" @click="cancelMove">Cancel</button>
+    </form>
+  </Modal>
   <div class="board">
     <section v-for="stage in columns" :key="stage.key" class="column">
       <h2>{{ stage.label }}</h2>
@@ -114,8 +143,10 @@ h2 {
   margin-bottom: 0.75rem;
 }
 
-.reason {
-  margin: 0 0 1rem;
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 select,

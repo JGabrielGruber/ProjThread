@@ -3,10 +3,24 @@ import { ref } from "vue";
 
 export type RoomStatus = "idle" | "loading" | "ready" | "error" | "no_session";
 
-export type ChatLine = {
+export type TapeLine = {
   seq: number;
+  kind: "chat" | "activity";
   body: string;
   actor_id: string | null;
+  event_id: string | null;
+  created_at: string;
+};
+
+export type ActivityEvent = {
+  id: string;
+  work_item_id: string;
+  type: string;
+  from_value: string | null;
+  to_value: string | null;
+  body: string | null;
+  actor_id: string;
+  ref_node_id: string | null;
   created_at: string;
 };
 
@@ -14,23 +28,28 @@ export type RoomItem = {
   id: string;
   title: string;
   stage_key: string;
+  owner_id?: string | null;
 };
 
 type MessageFrame = {
   type: "message";
   seq: number;
-  kind: string;
+  kind: "chat" | "activity";
   body: string;
   actor_id: string | null;
+  event_id: string | null;
   created_at: string;
 };
 
 export const useRoomStore = defineStore("room", () => {
   const status = ref<RoomStatus>("idle");
   const item = ref<RoomItem | null>(null);
-  const lines = ref<ChatLine[]>([]);
+  const lines = ref<TapeLine[]>([]);
+  const events = ref<ActivityEvent[]>([]);
+  const activityOnly = ref(false);
   const itemId = ref<string | null>(null);
   const loading = ref(false);
+  let eventsLoading = false;
   let socket: WebSocket | null = null;
   let reconnectScheduled = false;
 
@@ -40,6 +59,35 @@ export const useRoomStore = defineStore("room", () => {
       if (line.seq > max) max = line.seq;
     }
     return max;
+  }
+
+  function asRoomItem(body: RoomItem): RoomItem {
+    return {
+      id: body.id,
+      title: body.title,
+      stage_key: body.stage_key,
+      owner_id: body.owner_id ?? null,
+    };
+  }
+
+  async function refreshEvents(): Promise<void> {
+    const id = itemId.value;
+    if (!id || eventsLoading) return;
+    eventsLoading = true;
+    try {
+      const res = await fetch(`/api/work-items/${id}/events`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const payload = (await res.json()) as { events?: ActivityEvent[] };
+      if (Array.isArray(payload.events)) {
+        events.value = payload.events;
+      }
+    } catch {
+      // ignore
+    } finally {
+      eventsLoading = false;
+    }
   }
 
   function connect(): void {
@@ -58,18 +106,30 @@ export const useRoomStore = defineStore("room", () => {
       }
       if (!parsed || typeof parsed !== "object") return;
       const frame = parsed as { type?: unknown; kind?: unknown };
-      if (frame.type === "message" && frame.kind === "chat") {
+      if (
+        frame.type === "message" &&
+        (frame.kind === "chat" || frame.kind === "activity")
+      ) {
         const message = parsed as MessageFrame;
         if (lines.value.some((line) => line.seq === message.seq)) return;
         lines.value = [
           ...lines.value,
           {
             seq: message.seq,
+            kind: message.kind,
             body: message.body,
             actor_id: message.actor_id,
+            event_id: message.event_id,
             created_at: message.created_at,
           },
         ];
+        if (
+          message.kind === "activity" &&
+          message.event_id &&
+          !events.value.some((row) => row.id === message.event_id)
+        ) {
+          void refreshEvents();
+        }
         return;
       }
       if (frame.type === "caught_up") {
@@ -102,26 +162,28 @@ export const useRoomStore = defineStore("room", () => {
     reconnectScheduled = false;
     if (itemId.value !== nextItemId) {
       lines.value = [];
+      events.value = [];
     }
     itemId.value = nextItemId;
     try {
-      const res = await fetch(`/api/work-items/${nextItemId}`, {
-        credentials: "include",
-      });
-      if (res.status === 401) {
+      const [snapRes, eventsRes] = await Promise.all([
+        fetch(`/api/work-items/${nextItemId}`, { credentials: "include" }),
+        fetch(`/api/work-items/${nextItemId}/events`, {
+          credentials: "include",
+        }),
+      ]);
+      if (snapRes.status === 401 || eventsRes.status === 401) {
         status.value = "no_session";
         return;
       }
-      if (!res.ok) {
+      if (!snapRes.ok || !eventsRes.ok) {
         status.value = "error";
         return;
       }
-      const body = (await res.json()) as RoomItem;
-      item.value = {
-        id: body.id,
-        title: body.title,
-        stage_key: body.stage_key,
-      };
+      const body = (await snapRes.json()) as RoomItem;
+      item.value = asRoomItem(body);
+      const payload = (await eventsRes.json()) as { events?: ActivityEvent[] };
+      events.value = Array.isArray(payload.events) ? payload.events : [];
       connect();
     } catch {
       status.value = "error";
@@ -137,6 +199,38 @@ export const useRoomStore = defineStore("room", () => {
     socket.send(JSON.stringify({ type: "chat", body }));
   }
 
+  async function postEvent(payload: {
+    type: string;
+    from?: string | null;
+    to?: string | null;
+    body?: string;
+  }): Promise<void> {
+    const id = itemId.value;
+    if (!id) return;
+    const res = await fetch(`/api/work-items/${id}/events`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.status !== 201) return;
+    const data = (await res.json()) as {
+      event: ActivityEvent;
+      work_item: RoomItem;
+    };
+    const idx = events.value.findIndex((row) => row.id === data.event.id);
+    if (idx === -1) {
+      events.value = [...events.value, data.event];
+    } else {
+      events.value = events.value.map((row) =>
+        row.id === data.event.id ? data.event : row,
+      );
+    }
+    if (data.work_item) {
+      item.value = asRoomItem(data.work_item);
+    }
+  }
+
   function close(): void {
     status.value = "idle";
     const current = socket;
@@ -144,5 +238,15 @@ export const useRoomStore = defineStore("room", () => {
     current?.close();
   }
 
-  return { status, item, lines, open, send, close };
+  return {
+    status,
+    item,
+    lines,
+    events,
+    activityOnly,
+    open,
+    send,
+    postEvent,
+    close,
+  };
 });

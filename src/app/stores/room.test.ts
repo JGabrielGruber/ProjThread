@@ -101,21 +101,34 @@ describe("room store", () => {
     restoreWs();
   });
 
+  function jsonFor(url: string, extra?: { events?: unknown[] }): Response {
+    if (url.endsWith("/events")) {
+      return Response.json({ events: extra?.events ?? [] });
+    }
+    return Response.json(item);
+  }
+
   it("open GETs the work-item snapshot URL with credentials", async () => {
     const calls: { url: string; credentials: RequestCredentials | undefined }[] =
       [];
     globalThis.fetch = async (input, init) => {
+      const url = String(input);
       calls.push({
-        url: String(input),
+        url,
         credentials: init?.credentials,
       });
-      return Response.json(item);
+      return jsonFor(url);
     };
     const store = useRoomStore();
     await store.open("wi-1");
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "/api/work-items/wi-1");
+    assert.equal(calls.length, 2);
+    const urls = calls.map((c) => c.url).sort();
+    assert.deepEqual(urls, [
+      "/api/work-items/wi-1",
+      "/api/work-items/wi-1/events",
+    ]);
     assert.equal(calls[0].credentials, "include");
+    assert.equal(calls[1].credentials, "include");
   });
 
   it("second open while in-flight does not double-fetch", async () => {
@@ -134,7 +147,7 @@ describe("room store", () => {
     const second = store.open("wi-1");
     release();
     await Promise.all([first, second]);
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
   });
 
   it("401 => status no_session", async () => {
@@ -210,5 +223,83 @@ describe("room store", () => {
     sockets[0]!.emitClose(4001);
     assert.equal(store.status, "no_session");
     assert.equal(sockets.length, 1);
+  });
+
+  it("open fetches /api/work-items/wi-1/events", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      urls.push(url);
+      return jsonFor(url);
+    };
+    const store = useRoomStore();
+    await store.open("wi-1");
+    assert.ok(urls.includes("/api/work-items/wi-1/events"));
+  });
+
+  it("activity message seq 2 sets last_seq=2 on reconnect with no chat", async () => {
+    const event = {
+      id: "ev-1",
+      work_item_id: "wi-1",
+      type: "note",
+      from_value: null,
+      to_value: null,
+      body: "keep",
+      actor_id: "p1",
+      ref_node_id: null,
+      created_at: "2026-01-01T00:00:01.000Z",
+    };
+    globalThis.fetch = async (input) => jsonFor(String(input), { events: [event] });
+    const store = useRoomStore();
+    await store.open("wi-1");
+    sockets[0]!.emitMessage({
+      type: "message",
+      seq: 2,
+      kind: "activity",
+      body: "",
+      actor_id: null,
+      event_id: "ev-1",
+      created_at: "2026-01-01T00:00:01.000Z",
+    });
+    sockets[0]!.emitMessage({ type: "caught_up", last_seq: 2 });
+    assert.equal(store.lines.length, 1);
+    assert.equal(store.lines[0]!.kind, "activity");
+    sockets[0]!.emitClose(1006);
+    assert.equal(sockets.length, 2);
+    assert.match(sockets[1]!.url, /last_seq=2/);
+  });
+
+  it('postEvent({ type: "note", body: "x" }) POSTs /api/work-items/wi-1/events', async () => {
+    const posts: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (init?.method === "POST") {
+        posts.push({ url, body: JSON.parse(String(init.body)) });
+        return Response.json(
+          {
+            event: {
+              id: "ev-2",
+              work_item_id: "wi-1",
+              type: "note",
+              from_value: null,
+              to_value: null,
+              body: "x",
+              actor_id: "p1",
+              ref_node_id: null,
+              created_at: "2026-01-01T00:00:02.000Z",
+            },
+            work_item: { ...item, title: "Card" },
+          },
+          { status: 201 },
+        );
+      }
+      return jsonFor(url);
+    };
+    const store = useRoomStore();
+    await store.open("wi-1");
+    await store.postEvent({ type: "note", body: "x" });
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0]!.url, "/api/work-items/wi-1/events");
+    assert.deepEqual(posts[0]!.body, { type: "note", body: "x" });
   });
 });

@@ -6,6 +6,7 @@ import { useSessionStore, type Membership } from "./stores/session.ts";
 import type { Project } from "./stores/board.ts";
 
 const RoomView = defineAsyncComponent(() => import("./RoomView.vue"));
+const WikiView = defineAsyncComponent(() => import("./WikiView.vue"));
 
 const session = useSessionStore();
 const route = useRoute();
@@ -22,9 +23,21 @@ function queryString(value: unknown): string | undefined {
 const workspaceQuery = computed(() => queryString(route.query.workspace));
 const projectQuery = computed(() => queryString(route.query.project));
 const itemQuery = computed(() => queryString(route.query.item));
+const wikiQuery = computed(
+  () =>
+    queryString(route.query.wiki) === "1" ||
+    Boolean(queryString(route.query.node)),
+);
 const hasBoardQuery = computed(
   () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
 );
+
+async function openWiki(): Promise<void> {
+  const query: Record<string, string> = { wiki: "1" };
+  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
+  if (projectQuery.value) query.project = projectQuery.value;
+  await router.replace({ query });
+}
 
 async function fillMissingQuery(memberships: Membership[]): Promise<void> {
   const workspaceMissing = !workspaceQuery.value;
@@ -86,8 +99,10 @@ watch(
     <section v-else>
       <header>
         <p class="who">{{ session.principal.display_name }}</p>
+        <button type="button" class="wiki-nav" @click="openWiki">Wiki</button>
       </header>
       <RoomView v-if="itemQuery" />
+      <WikiView v-else-if="wikiQuery" />
       <KanbanBoard v-else-if="hasBoardQuery" />
     </section>
   </main>
@@ -107,7 +122,20 @@ h1 {
 }
 
 header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
   margin-bottom: 1rem;
+}
+
+.wiki-nav {
+  font: inherit;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
 }
 
 .who {

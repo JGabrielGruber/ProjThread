@@ -1,0 +1,267 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { renderMarkdown } from "./markdown.ts";
+import { useWikiStore } from "./stores/wiki.ts";
+
+const NODE_TYPES = ["note", "decision", "process", "research"] as const;
+
+const route = useRoute();
+const router = useRouter();
+const wiki = useWikiStore();
+
+const editing = ref(false);
+const draftTitle = ref("");
+const draftType = ref<(typeof NODE_TYPES)[number]>("note");
+const draftContent = ref("");
+const linkId = ref("");
+
+function queryString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+const workspaceId = computed(() => queryString(route.query.workspace));
+const nodeId = computed(() => queryString(route.query.node));
+
+watch(
+  [workspaceId, nodeId],
+  ([workspace, node]) => {
+    if (workspace) void wiki.loadList(workspace);
+    if (node) {
+      editing.value = false;
+      void wiki.openNode(node);
+    }
+  },
+  { immediate: true },
+);
+
+const rendered = computed(() =>
+  renderMarkdown(wiki.node?.content ?? ""),
+);
+
+async function openNode(id: string): Promise<void> {
+  const query = { ...route.query, node: id };
+  delete query.item;
+  await router.replace({ query });
+}
+
+async function back(): Promise<void> {
+  const query = { ...route.query, wiki: "1" };
+  delete query.node;
+  await router.replace({ query });
+}
+
+async function create(): Promise<void> {
+  if (wiki.status !== "ready") return;
+  const title = draftTitle.value.trim();
+  if (!title) return;
+  const input: {
+    title: string;
+    type: string;
+    content: string;
+    work_item_id?: string;
+  } = {
+    title,
+    type: draftType.value,
+    content: draftContent.value,
+  };
+  const workItemId = linkId.value.trim();
+  if (workItemId) input.work_item_id = workItemId;
+  await wiki.createNode(input);
+  draftTitle.value = "";
+  draftContent.value = "";
+  linkId.value = "";
+  if (wiki.node) await openNode(wiki.node.id);
+}
+
+function startEdit(): void {
+  if (!wiki.node) return;
+  draftTitle.value = wiki.node.title;
+  draftType.value = NODE_TYPES.includes(wiki.node.type as (typeof NODE_TYPES)[number])
+    ? (wiki.node.type as (typeof NODE_TYPES)[number])
+    : "note";
+  draftContent.value = wiki.node.content ?? "";
+  editing.value = true;
+}
+
+async function save(): Promise<void> {
+  if (wiki.status !== "ready" || !wiki.node) return;
+  wiki.node.title = draftTitle.value;
+  wiki.node.type = draftType.value;
+  wiki.node.content = draftContent.value;
+  await wiki.saveNode();
+  editing.value = false;
+}
+
+async function link(): Promise<void> {
+  if (wiki.status !== "ready") return;
+  const id = linkId.value.trim();
+  if (!id) return;
+  await wiki.linkWorkItem(id);
+  linkId.value = "";
+}
+</script>
+
+<template>
+  <section class="wiki">
+    <header>
+      <button v-if="nodeId" type="button" class="back" @click="back">Back</button>
+      <h2>{{ wiki.node?.title ?? "Wiki" }}</h2>
+    </header>
+    <p v-if="wiki.status === 'loading'" class="muted">Loading</p>
+    <p v-else-if="wiki.status === 'error'" class="error">Could not load wiki</p>
+    <p v-else-if="wiki.status === 'no_session'">No session</p>
+
+    <template v-if="!nodeId">
+      <ul class="list">
+        <li v-for="row in wiki.nodes" :key="row.id">
+          <button type="button" class="title" @click="openNode(row.id)">
+            {{ row.title }}
+          </button>
+          <span class="muted">{{ row.type }}</span>
+        </li>
+      </ul>
+      <form class="composer" @submit.prevent="create">
+        <input v-model="draftTitle" type="text" aria-label="Title" />
+        <select v-model="draftType" aria-label="Type">
+          <option v-for="type in NODE_TYPES" :key="type" :value="type">
+            {{ type }}
+          </option>
+        </select>
+        <textarea v-model="draftContent" aria-label="Content" />
+        <input
+          v-model="linkId"
+          type="text"
+          aria-label="Work item id"
+        />
+        <button type="submit" :disabled="wiki.status !== 'ready'">Create</button>
+      </form>
+    </template>
+
+    <template v-else-if="wiki.node">
+      <template v-if="!editing">
+        <article class="wiki-read" v-html="rendered" />
+        <button type="button" :disabled="wiki.status !== 'ready'" @click="startEdit">
+          Edit
+        </button>
+      </template>
+      <template v-else>
+        <input v-model="draftTitle" type="text" aria-label="Title" />
+        <select v-model="draftType" aria-label="Type">
+          <option v-for="type in NODE_TYPES" :key="type" :value="type">
+            {{ type }}
+          </option>
+        </select>
+        <textarea v-model="draftContent" aria-label="Source" />
+        <button type="button" :disabled="wiki.status !== 'ready'" @click="save">
+          Save
+        </button>
+        <button type="button" @click="editing = false">Read</button>
+      </template>
+      <form class="link" @submit.prevent="link">
+        <input
+          v-model="linkId"
+          type="text"
+          aria-label="Work item id"
+        />
+        <button type="submit" :disabled="wiki.status !== 'ready'">Link</button>
+      </form>
+      <p class="muted">{{ wiki.workItemIds.join(", ") }}</p>
+    </template>
+  </section>
+</template>
+
+<style scoped>
+.wiki {
+  color: var(--fg);
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 1rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.list li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin: 0 0 0.5rem;
+}
+
+.composer,
+.link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 40rem;
+  margin: 0 0 1rem;
+}
+
+.wiki-read {
+  max-width: 65ch;
+  line-height: 1.65;
+  margin: 0 0 1rem;
+}
+
+.wiki-read :deep(a) {
+  color: var(--accent);
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+}
+
+textarea {
+  min-height: 12rem;
+}
+
+button,
+.title {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.title {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+</style>

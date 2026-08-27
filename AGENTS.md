@@ -6,7 +6,7 @@ Read this file first after compact. It is the project map, not the archive.
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie on `/api/*` and WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki** + **config**) and **super-admin** = our components, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
-**Now:** write the Deploy plan (see `docs/STATUS.md`). PrimeVue stays out. Do not implement Deploy. Do not start a slice that STATUS does not name.
+**Now:** no open slice (see `docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start a slice that STATUS does not name.
 
 ## Pickup (coding agents, including Grok Build)
 

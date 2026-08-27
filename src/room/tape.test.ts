@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { memoryTape, rejectChatBody } from "./tape.ts";
+import { memoryTape, rejectActivityBody, rejectChatBody } from "./tape.ts";
 
 describe("rejectChatBody", () => {
   it("returns empty for empty and whitespace", () => {
@@ -71,5 +71,56 @@ describe("memoryTape", () => {
       });
     }, { message: "empty" });
     assert.equal(tape.lastSeq(), 0);
+  });
+
+  it("chat then activity shares seq; replay and idempotent event_id", () => {
+    const tape = memoryTape();
+    const chat = tape.appendChat({
+      body: "hi",
+      actor_id: "p1",
+      created_at: "2026-08-26T00:00:00.000Z",
+    });
+    const activity = tape.appendActivity({
+      event_id: "ev-1",
+      created_at: "2026-08-26T00:00:01.000Z",
+    });
+    assert.equal(chat.seq, 1);
+    assert.equal(chat.kind, "chat");
+    assert.equal(activity.seq, 2);
+    assert.equal(activity.kind, "activity");
+    assert.equal(activity.body, "");
+    assert.equal(activity.event_id, "ev-1");
+    assert.equal(activity.actor_id, null);
+    assert.deepEqual(tape.replay(1), [activity]);
+    const again = tape.appendActivity({
+      event_id: "ev-1",
+      created_at: "2026-08-26T00:00:02.000Z",
+    });
+    assert.equal(again.seq, 2);
+    assert.equal(tape.lastSeq(), 2);
+  });
+
+  it("empty event_id throws and does not advance lastSeq", () => {
+    const tape = memoryTape();
+    assert.throws(() => {
+      tape.appendActivity({
+        event_id: "",
+        created_at: "2026-08-26T00:00:00.000Z",
+      });
+    }, { message: "empty" });
+    assert.equal(tape.lastSeq(), 0);
+  });
+});
+
+describe("rejectActivityBody", () => {
+  it("required empty/whitespace is empty; optional empty is null", () => {
+    assert.equal(rejectActivityBody("", true), "empty");
+    assert.equal(rejectActivityBody("  ", true), "empty");
+    assert.equal(rejectActivityBody("", false), null);
+  });
+
+  it("allows 2048 ascii bytes and rejects 2049", () => {
+    assert.equal(rejectActivityBody("a".repeat(2048), true), null);
+    assert.equal(rejectActivityBody("a".repeat(2049), true), "too_large");
   });
 });

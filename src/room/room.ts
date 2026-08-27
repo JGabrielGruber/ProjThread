@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../worker/env.ts";
 import {
   rejectChatBody,
@@ -142,14 +143,11 @@ function isChatPayload(
   );
 }
 
-export class Room {
-  readonly ctx: DurableObjectState;
-  readonly env: Env;
+export class Room extends DurableObject<Env> {
   readonly tape: Tape;
 
   constructor(ctx: DurableObjectState, env: Env) {
-    this.ctx = ctx;
-    this.env = env;
+    super(ctx, env);
     this.tape = sqlTape(ctx.storage.sql);
     this.tape.ensureSchema();
   }

@@ -55,6 +55,7 @@ async function wrap(
   deps: Deps,
   path: string,
   init: RequestInit = {},
+  mode: "json" | "node" = "json",
 ): Promise<{
   content: { type: "text"; text: string }[];
   isError?: true;
@@ -87,7 +88,27 @@ async function wrap(
       content: [{ type: "text", text: errorText(res.status, text) }],
     };
   }
+  if (mode === "node") return nodeToolResult(text);
   return { content: [{ type: "text", text: text || "{}" }] };
+}
+
+function nodeToolResult(text: string): {
+  content: { type: "text"; text: string }[];
+} {
+  let parsed: { node?: { content?: unknown } };
+  try {
+    parsed = JSON.parse(text) as { node?: { content?: unknown } };
+  } catch {
+    return { content: [{ type: "text", text: text || "{}" }] };
+  }
+  const markdown =
+    typeof parsed.node?.content === "string" ? parsed.node.content : "";
+  return {
+    content: [
+      { type: "text", text: markdown },
+      { type: "text", text: text || "{}" },
+    ],
+  };
 }
 
 function createServer(deps: Deps): McpServer {
@@ -214,7 +235,7 @@ function createServer(deps: Deps): McpServer {
       description: "Get a wiki node including markdown content",
       inputSchema: { node_id: z.string() },
     },
-    async ({ node_id }) => wrap(deps, `/api/nodes/${node_id}`),
+    async ({ node_id }) => wrap(deps, `/api/nodes/${node_id}`, {}, "node"),
   );
 
   server.registerTool(
@@ -231,11 +252,16 @@ function createServer(deps: Deps): McpServer {
       },
     },
     async ({ workspace_id, title, type, summary, content, work_item_id }) =>
-      wrap(deps, `/api/workspaces/${workspace_id}/nodes`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: compactJson({ title, type, summary, content, work_item_id }),
-      }),
+      wrap(
+        deps,
+        `/api/workspaces/${workspace_id}/nodes`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: compactJson({ title, type, summary, content, work_item_id }),
+        },
+        "node",
+      ),
   );
 
   server.registerTool(
@@ -251,11 +277,16 @@ function createServer(deps: Deps): McpServer {
       },
     },
     async ({ node_id, title, type, summary, content }) =>
-      wrap(deps, `/api/nodes/${node_id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: compactJson({ title, type, summary, content }),
-      }),
+      wrap(
+        deps,
+        `/api/nodes/${node_id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: compactJson({ title, type, summary, content }),
+        },
+        "node",
+      ),
   );
 
   server.registerTool(
@@ -273,6 +304,52 @@ function createServer(deps: Deps): McpServer {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ work_item_id }),
       }),
+  );
+
+  server.registerTool(
+    "compose_node",
+    {
+      description:
+        "Compose: include a wiki node as an ordered child (not a citation)",
+      inputSchema: {
+        node_id: z.string(),
+        child_id: z.string(),
+        position: z.number().int().optional(),
+      },
+    },
+    async ({ node_id, child_id, position }) =>
+      wrap(
+        deps,
+        `/api/nodes/${node_id}/includes`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: compactJson({ child_id, position }),
+        },
+        "node",
+      ),
+  );
+
+  server.registerTool(
+    "cite_node",
+    {
+      description: "Cite another wiki node (not an include)",
+      inputSchema: {
+        node_id: z.string(),
+        to_id: z.string(),
+      },
+    },
+    async ({ node_id, to_id }) =>
+      wrap(
+        deps,
+        `/api/nodes/${node_id}/refs`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ to_id }),
+        },
+        "node",
+      ),
   );
 
   return server;

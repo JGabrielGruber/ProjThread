@@ -258,12 +258,14 @@ Plan 10 shipped a **thin agent wire**, not a new identity:
 
 ## Parked: catalog MCP
 
-Plan 11 ships a **thin adapter**, not a second product:
+Plan 11 shipped a **thin adapter**, not a second product. Plan 12 hardens the Bot leftover:
 
 - Same-origin `POST /mcp` Streamable HTTP (`createMcpHandler`, stateless, JSON responses).
 - Same D1 `session` as Bearer on app HTTP. Cookie is ignored on `/mcp`.
 - Tools wrap catalog + wiki HTTP (cards and markdown nodes). Room / WS stay out.
-- OAuth, KV, `McpAgent`, and a distinct agent-token table stay absences.
+- Node tools (`get_node`, `create_node`, `update_node`, `compose_node`, `cite_node`): `content[0].text` is raw markdown; GET JSON is `content[1].text`.
+- `compose_node` wraps `POST .../includes`; `cite_node` wraps `POST .../refs`. Attach stays `attach_node_work_item`.
+- OAuth, KV, `McpAgent`, a distinct agent-token table, and room MCP stay absences.
 
 ## Parked: node edges
 

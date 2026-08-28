@@ -33,6 +33,8 @@ const TOOL_NAMES = [
   "create_node",
   "update_node",
   "attach_node_work_item",
+  "compose_node",
+  "cite_node",
 ] as const;
 
 function unused(): never {
@@ -424,10 +426,229 @@ describe("handleMcp", () => {
       result?: { content?: { type: string; text: string }[]; isError?: boolean };
     };
     assert.notEqual(body.result?.isError, true);
-    const payload = JSON.parse(body.result?.content?.[0]?.text ?? "{}") as {
-      node: { title: string; workspace_id: string };
+    assert.equal(body.result?.content?.[0]?.text, "Twice daily.");
+    const payload = JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
+      node: { title: string; workspace_id: string; content: string };
     };
     assert.equal(payload.node.title, "Feed schedule");
     assert.equal(payload.node.workspace_id, bundle.workspace.id);
+    assert.equal(payload.node.content, "Twice daily.");
+  });
+
+  it("create_node content[0] is unescaped markdown", async () => {
+    const markdown = 'Hay twice.\n\nSay "ready".';
+    const { sessionId, sessions, catalog, wiki, bundle } =
+      await memberContext();
+    const res = await handleMcp(
+      postMcp(
+        { authorization: `Bearer ${sessionId}` },
+        "tools/call",
+        {
+          name: "create_node",
+          arguments: {
+            workspace_id: bundle.workspace.id,
+            title: "Feed",
+            content: markdown,
+          },
+        },
+        "create_node",
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      result?: { content?: { type: string; text: string }[]; isError?: boolean };
+    };
+    assert.notEqual(body.result?.isError, true);
+    assert.equal(body.result?.content?.[0]?.text, markdown);
+    assert.equal(body.result?.content?.[0]?.text.includes("\\n"), false);
+    const stored = JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
+      node: { id: string; content: string };
+    };
+    assert.equal(stored.node.content, markdown);
+    const got = await handleMcp(
+      postMcp(
+        { authorization: `Bearer ${sessionId}` },
+        "tools/call",
+        { name: "get_node", arguments: { node_id: stored.node.id } },
+        "get_node",
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const gotBody = (await got.json()) as {
+      result?: { content?: { type: string; text: string }[] };
+    };
+    assert.equal(gotBody.result?.content?.[0]?.text, markdown);
+  });
+
+  it("compose_node includes without citing; cite_node cites without including", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } =
+      await memberContext();
+
+    async function create(title: string, content: string) {
+      const res = await handleMcp(
+        postMcp(
+          { authorization: `Bearer ${sessionId}` },
+          "tools/call",
+          {
+            name: "create_node",
+            arguments: {
+              workspace_id: bundle.workspace.id,
+              title,
+              content,
+            },
+          },
+          "create_node",
+        ),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      );
+      const body = (await res.json()) as {
+        result?: { content?: { text: string }[] };
+      };
+      return JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
+        node: { id: string };
+      };
+    }
+
+    const parent = await create("Plan", "Parent body");
+    const child = await create("Requirements", "Child body");
+    const other = await create("Other plan", "Cite me");
+
+    const composed = await handleMcp(
+      postMcp(
+        { authorization: `Bearer ${sessionId}` },
+        "tools/call",
+        {
+          name: "compose_node",
+          arguments: {
+            node_id: parent.node.id,
+            child_id: child.node.id,
+          },
+        },
+        "compose_node",
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(composed.status, 200);
+    const composedBody = (await composed.json()) as {
+      result?: { content?: { text: string }[]; isError?: boolean };
+    };
+    assert.notEqual(composedBody.result?.isError, true);
+    assert.equal(composedBody.result?.content?.[0]?.text, "Parent body");
+    const composedPayload = JSON.parse(
+      composedBody.result?.content?.[1]?.text ?? "{}",
+    ) as {
+      includes: { id: string }[];
+      refs: { id: string }[];
+    };
+    assert.equal(composedPayload.includes[0]?.id, child.node.id);
+    assert.equal(composedPayload.refs.length, 0);
+
+    const cited = await handleMcp(
+      postMcp(
+        { authorization: `Bearer ${sessionId}` },
+        "tools/call",
+        {
+          name: "cite_node",
+          arguments: { node_id: parent.node.id, to_id: other.node.id },
+        },
+        "cite_node",
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const citedBody = (await cited.json()) as {
+      result?: { content?: { text: string }[]; isError?: boolean };
+    };
+    assert.notEqual(citedBody.result?.isError, true);
+    const citedPayload = JSON.parse(
+      citedBody.result?.content?.[1]?.text ?? "{}",
+    ) as {
+      includes: { id: string }[];
+      refs: { id: string }[];
+    };
+    assert.equal(citedPayload.refs[0]?.id, other.node.id);
+    assert.equal(citedPayload.includes.length, 1);
+    assert.equal(citedPayload.includes[0]?.id, child.node.id);
+  });
+
+  it("compose_node cycle is isError", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } =
+      await memberContext();
+
+    async function create(title: string) {
+      const res = await handleMcp(
+        postMcp(
+          { authorization: `Bearer ${sessionId}` },
+          "tools/call",
+          {
+            name: "create_node",
+            arguments: { workspace_id: bundle.workspace.id, title },
+          },
+          "create_node",
+        ),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      );
+      const body = (await res.json()) as {
+        result?: { content?: { text: string }[] };
+      };
+      return JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
+        node: { id: string };
+      };
+    }
+
+    const a = await create("A");
+    const b = await create("B");
+    await handleMcp(
+      postMcp(
+        { authorization: `Bearer ${sessionId}` },
+        "tools/call",
+        {
+          name: "compose_node",
+          arguments: { node_id: a.node.id, child_id: b.node.id },
+        },
+        "compose_node",
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const cycle = await handleMcp(
+      postMcp(
+        { authorization: `Bearer ${sessionId}` },
+        "tools/call",
+        {
+          name: "compose_node",
+          arguments: { node_id: b.node.id, child_id: a.node.id },
+        },
+        "compose_node",
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const cycleBody = (await cycle.json()) as {
+      result?: { isError?: boolean };
+    };
+    assert.equal(cycleBody.result?.isError, true);
   });
 });

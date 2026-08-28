@@ -12,6 +12,7 @@ import {
   type SessionRow,
   type SessionStore,
 } from "./session.ts";
+import { COOKIE_NAME } from "../lib/cookies.ts";
 import { handleWiki } from "./wiki-http.ts";
 import { memoryWikiStore, type WikiStore } from "./wiki.ts";
 
@@ -285,6 +286,22 @@ describe("handleWiki", () => {
     const res = await handleWiki(
       new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
         headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { nodes: [] });
+  });
+
+  it("GET list member accepts a live Bearer session", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const sessionId = cookie.slice(`${COOKIE_NAME}=`.length);
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        headers: { authorization: `Bearer ${sessionId}` },
       }),
       env,
       sessions,

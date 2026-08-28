@@ -1,6 +1,6 @@
-import { parseSessionId } from "../lib/cookies.ts";
 import type { CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
+import { sessionIdFromRequest } from "../lib/session-id.ts";
 import { resolveSession, type SessionStore } from "./session.ts";
 
 export async function handleMe(
@@ -13,7 +13,7 @@ export async function handleMe(
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
-  const sessionId = parseSessionId(request.headers.get("cookie"));
+  const sessionId = sessionIdFromRequest(request);
   if (!sessionId) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }

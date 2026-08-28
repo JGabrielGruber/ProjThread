@@ -271,6 +271,41 @@ describe("handleAdmin", () => {
     assert.match(setCookie, new RegExp(`${COOKIE_NAME}=${body.session.id}`));
   });
 
+  it("omits Set-Cookie when set_cookie is false", async () => {
+    const store = memoryStore();
+    const created = await handleAdmin(
+      adminRequest("/api/admin/principals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "agent", display_name: "Grok Bot" }),
+      }),
+      env,
+      store,
+      stubCatalog(),
+    );
+    const principal = (await created.json()) as Principal;
+
+    const minted = await handleAdmin(
+      adminRequest("/api/admin/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          principal_id: principal.id,
+          set_cookie: false,
+        }),
+      }),
+      env,
+      store,
+      stubCatalog(),
+    );
+    assert.equal(minted.status, 201);
+    assert.equal(minted.headers.get("set-cookie"), null);
+    const body = (await minted.json()) as { session: SessionRow };
+    assert.equal(body.session.principal_id, principal.id);
+    assert.ok(body.session.id);
+    assert.ok(body.session.expires_at);
+  });
+
   it("returns 400 without principal_id and 404 if principal missing", async () => {
     const store = memoryStore();
     const missingBody = await handleAdmin(

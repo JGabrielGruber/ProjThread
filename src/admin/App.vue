@@ -16,11 +16,18 @@ type CreatedOrg = {
   principal: { id: string; type: string; display_name: string };
 };
 
+type Issued = {
+  display_name: string;
+  session_id: string;
+  expires_at: string;
+};
+
 const principals = ref<Principal[]>([]);
 const displayName = ref("");
 const type = ref<PrincipalType>("human");
 const orgName = ref("");
 const createdOrg = ref<CreatedOrg | null>(null);
+const issued = ref<Issued | null>(null);
 const error = ref("");
 
 async function load() {
@@ -101,6 +108,38 @@ async function mint(principalId: string) {
   }
 }
 
+async function issueToken(p: Principal) {
+  error.value = "";
+  issued.value = null;
+  try {
+    const res = await fetch("/api/admin/sessions", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ principal_id: p.id, set_cookie: false }),
+    });
+    if (!res.ok) {
+      error.value = "Issue token failed";
+      return;
+    }
+    const body = (await res.json()) as {
+      session: { id: string; expires_at: string };
+    };
+    issued.value = {
+      display_name: p.display_name,
+      session_id: body.session.id,
+      expires_at: body.session.expires_at,
+    };
+  } catch {
+    error.value = "Issue token failed";
+  }
+}
+
+async function copyIssued() {
+  if (!issued.value) return;
+  await navigator.clipboard.writeText(issued.value.session_id);
+}
+
 onMounted(load);
 </script>
 
@@ -144,9 +183,18 @@ onMounted(load);
       <li v-for="p in principals" :key="p.id">
         <span>{{ p.display_name }}</span>
         <span class="muted">{{ p.type }}</span>
-        <button type="button" @click="mint(p.id)">Mint session</button>
+        <button type="button" @click="mint(p.id)">Enter as</button>
+        <button type="button" @click="issueToken(p)">Issue token</button>
       </li>
     </ul>
+
+    <section v-if="issued" class="issued">
+      <p>
+        Token for {{ issued.display_name }} (expires {{ issued.expires_at }})
+      </p>
+      <input :value="issued.session_id" readonly name="issued_session_id" />
+      <button type="button" @click="copyIssued">Copy</button>
+    </section>
   </main>
 </template>
 
@@ -210,6 +258,14 @@ li {
 }
 
 .muted {
+  color: var(--muted);
+}
+
+.issued {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 28rem;
+  margin-top: 1rem;
   color: var(--muted);
 }
 </style>

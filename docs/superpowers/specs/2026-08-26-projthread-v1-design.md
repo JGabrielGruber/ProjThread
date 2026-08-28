@@ -55,8 +55,8 @@ Workspace ≠ Project. Product name ≠ the Project entity. In dotproj, Category
 | `/` PWA assets | Static | Public in v1 |
 | `/admin`, `/admin/*` | Static admin SPA + history shell | Access |
 | `/api/admin/*` | Worker | Access JWT (`Cf-Access-Jwt-Assertion`). Local: `ADMIN_DEV_SECRET` like PalmEngine |
-| `/api/*` (app) | Worker | Session cookie → D1 `session` → `principal` + membership |
-| WS `/api/rooms/:id` | Worker upgrade → Room DO | Same cookie |
+| `/api/*` (app) | Worker | Session cookie **or** `Authorization: Bearer <session.id>` → D1 `session` → `principal` + membership |
+| WS `/api/rooms/:id` | Worker upgrade → Room DO | Cookie only |
 
 `assets.run_worker_first`: `/api/*`, `/admin` (HTML shell). Page loads of the PWA are not Worker requests.
 
@@ -82,7 +82,7 @@ Workspace ≠ Project. Product name ≠ the Project entity. In dotproj, Category
 | --- | --- |
 | Kanban, room, wiki | **Our Vue.** Tokenized Grok/X/SpaceX-sharp (dark-first, high contrast, dense). Wiki **read** is long-form (phone-calm Markdown), not kanban density. **No hex in components** — semantic CSS variables (`--bg`, `--fg`, `--muted`, `--accent`, `--danger`, `--radius`, `--font`). Light is a second token set. |
 | PWA config (projects, members, stages) | **Our Vue + tokens.** **List + dialog**, not DataGrid. PrimeVue is out (v5 is not OSS). |
-| Super-admin `/admin` | **Our Vue + tokens.** Access. Session mint, orgs, principals. |
+| Super-admin `/admin` | **Our Vue + tokens.** Access. Enter as / Issue token, orgs, principals. |
 
 No PrimeVue on any surface. Config and admin use the same tokenized controls as the product screens.
 
@@ -93,12 +93,12 @@ First load may be fat. After boot, smooth on a phone and on 180 Hz.
 **v1 is session vending** — a workaround / test harness (José, and a Bot driving the PWA in a browser). Not the destination login. No Google OAuth. No public signup.
 
 1. Operator passes Access, opens `/admin`.
-2. `POST /api/admin/sessions { principal_id }` → D1 `session` (id, principal_id, expires_at, minted_by) → `Set-Cookie` HttpOnly, Secure, SameSite=Lax, path `/`. v1: operator may mint for any `principal` row they can see in admin (created there). No self-serve.
-3. PWA and WS use that cookie. Revoke/list in admin.
+2. `POST /api/admin/sessions { principal_id }` → D1 `session` (id, principal_id, expires_at, minted_by) → `Set-Cookie` HttpOnly, Secure, SameSite=Lax, path `/` (**Enter as**). `{ principal_id, set_cookie: false }` returns the same row with **no** `Set-Cookie` (**Issue token**). v1: operator may mint for any `principal` row they can see in admin (created there). No self-serve.
+3. PWA and WS use the cookie. App HTTP also accepts `Authorization: Bearer <session.id>`. If Bearer is present, do not fall back to cookie. Revoke-by-id in admin.
 
 Cookie name: `pt_session` (opaque session id, not a signed blob). Expiry: 30 days. Destination login later **inserts the same row**.
 
-Agents’ native path later: Bearer on `principal.type = agent`. Schema has `principal.type` ∈ {`human`, `agent`, `service`} from day one.
+v1 Bearer **is** that session id (any `principal.type`). Schema has `principal.type` ∈ {`human`, `agent`, `service`} from day one. Distinct agent OAuth later.
 
 ## Data flow
 
@@ -245,6 +245,16 @@ Worker catalog handlers stay inside **10 ms CPU** (Free). Room work is the DO (3
 7. Tokens (Grok/X-sharp), PWA installability  
 8. Deploy: `APP_ORIGIN`, Access, D1, custom domain as config  
 
+## Parked: session Bearer
+
+Plan 10 shipped a **thin agent wire**, not a new identity:
+
+- Same D1 `session` row. `Authorization: Bearer <session.id>` on app HTTP (`/api/me`, catalog, wiki). Cookie unchanged for the PWA.
+- If Bearer is present, do not fall back to cookie.
+- Admin: default mint still Set-Cookie (Enter as). `{ set_cookie: false }` returns the id and does not clobber the operator cookie (Issue token).
+- WS stays cookie. MCP, OAuth, and a distinct agent-token table stay absences.
+- Membership stays Config (create agent principal in admin, add member, then issue).
+
 ## Parked: node edges
 
 Vertices exist (`node`). Plan 9 shipped **both** HTTP kinds. PWA outline/attachment chrome stays parked.
@@ -257,7 +267,7 @@ Vertices exist (`node`). Plan 9 shipped **both** HTTP kinds. PWA outline/attachm
 
 ## Named absences
 
-MCP. Destination login / public signup. Google OAuth. Bearer agents. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. **PrimeVue** (v5 is not OSS; do not re-add). PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).
+MCP. Destination login / public signup. Google OAuth. Distinct agent OAuth tokens. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. **PrimeVue** (v5 is not OSS; do not re-add). PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).
 
 ## Load classes
 

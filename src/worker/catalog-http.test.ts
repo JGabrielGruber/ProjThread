@@ -12,6 +12,7 @@ import {
   type WorkItemRow,
   type WorkspaceMemberRow,
 } from "./catalog.ts";
+import { COOKIE_NAME } from "../lib/cookies.ts";
 import type { Env } from "./env.ts";
 import {
   type Principal,
@@ -359,6 +360,21 @@ describe("handleCatalog", () => {
     );
     assert.equal(res.status, 401);
     assert.deepEqual(await res.json(), { error: "unauthorized" });
+  });
+
+  it("GET projects accepts a live Bearer session", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const sessionId = cookie.slice(`${COOKIE_NAME}=`.length);
+    const res = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/projects`,
+        { headers: { authorization: `Bearer ${sessionId}` } },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 200);
   });
 
   it("returns 403 for another workspace", async () => {

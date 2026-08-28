@@ -158,6 +158,8 @@ async function createSession(
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
 
+  const setCookie = body.set_cookie !== false;
+
   let session;
   try {
     session = await mintSession(store, body.principal_id);
@@ -165,15 +167,10 @@ async function createSession(
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
-  return Response.json(
-    { session },
-    {
-      status: 201,
-      headers: {
-        "Set-Cookie": serializeSessionCookie(session.id, env.APP_ORIGIN, 30),
-      },
-    },
-  );
+  const headers = setCookie
+    ? { "Set-Cookie": serializeSessionCookie(session.id, env.APP_ORIGIN, 30) }
+    : undefined;
+  return Response.json({ session }, { status: 201, headers });
 }
 
 async function revokeAndMaybeClearCookie(

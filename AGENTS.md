@@ -3,10 +3,10 @@
 Read this file first after compact. It is the project map, not the archive.
 
 **Repo:** https://github.com/JGabrielGruber/ProjThread (also local `~/Projects/ProjThread`)
-**Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie on `/api/*` and WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
+**Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie **or** `Authorization: Bearer <session.id>` on app `/api/*`, cookie on WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki** + **config**) and **super-admin** = our components, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
-**Now:** no open slice (see `docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start a slice that STATUS does not name.
+**Now:** no open slice (see `docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start MCP. Do not start a slice that STATUS does not name.
 
 ## Pickup (coding agents, including Grok Build)
 
@@ -64,7 +64,7 @@ Spec is approved. Implement **only** the open plan in `docs/STATUS.md`. If there
 - **Activity** is work-item-local (`decision`, `occurrence`, `note`, card moves). Rendered **in the chat timeline** at that seq. Activity-only filter = preview of the chat archive. Not a second wiki.
 - **Nodes** are workspace-graph vertices. Semantic `type` ≠ `payload_kind` (`markdown` \| `blob`). v1 writes markdown only; blob columns reserved, R2 unbound. Markdown read view is phone-calm. M2M links to projects and work items. Not the chat archive.
 - Principals include humans **and** agents. Schema must not assume “user = Google account”. Agents are a **paid-plan load class**, not a v1 feature.
-- **Auth (v1 workaround):** Cloudflare Access on `/admin` and `/api/admin/*`. Admin **vends** a D1 `session` + HttpOnly cookie for a chosen principal (human or browser-shaped Bot test). Same origin. WS upgrade uses the cookie. Not the destination login. Agent Bearer tokens later.
+- **Auth (v1 workaround):** Cloudflare Access on `/admin` and `/api/admin/*`. Admin **vends** a D1 `session`: **Enter as** sets HttpOnly `pt_session`; **Issue token** (`set_cookie: false`) returns the id for `Authorization: Bearer`. Same origin. App HTTP accepts cookie or Bearer (Bearer present → no cookie fallback). WS upgrade uses the cookie. Not the destination login. Distinct agent OAuth later.
 - MCP, Vectorize, R2, Chief-of-Staff agent are **named absences** until a version spec takes them.
 
 ## Free tier (do not drift)

@@ -1,5 +1,5 @@
-import { parseSessionId } from "../lib/cookies.ts";
 import { newId } from "../lib/id.ts";
+import { sessionIdFromRequest } from "../lib/session-id.ts";
 import { descendantIds } from "../lib/project-tree.ts";
 import { rejectActivityBody } from "../room/tape.ts";
 import type {
@@ -33,7 +33,7 @@ export async function handleCatalog(
   sessions: SessionStore,
   catalog: CatalogStore,
 ): Promise<Response> {
-  const sessionId = parseSessionId(request.headers.get("cookie"));
+  const sessionId = sessionIdFromRequest(request);
   if (!sessionId) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }

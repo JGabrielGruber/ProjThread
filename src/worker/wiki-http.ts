@@ -1,5 +1,5 @@
-import { parseSessionId } from "../lib/cookies.ts";
 import { newId } from "../lib/id.ts";
+import { sessionIdFromRequest } from "../lib/session-id.ts";
 import { wouldCycleIncludes } from "../lib/node-rel.ts";
 import {
   rejectContent,
@@ -26,7 +26,7 @@ export async function handleWiki(
   catalog: CatalogStore,
   wiki: WikiStore,
 ): Promise<Response> {
-  const sessionId = parseSessionId(request.headers.get("cookie"));
+  const sessionId = sessionIdFromRequest(request);
   if (!sessionId) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }

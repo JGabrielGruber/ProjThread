@@ -151,6 +151,36 @@ describe("handleMe", () => {
     assert.deepEqual(await res.json(), { principal, memberships: [] });
   });
 
+  it("returns the principal for a live Bearer session", async () => {
+    const store = memoryStore();
+    const { principal, session } = await mintCookie(store);
+    const res = await handleMe(
+      new Request(`${ORIGIN}/api/me`, {
+        headers: { authorization: `Bearer ${session.id}` },
+      }),
+      env,
+      store,
+      memoryCatalog(),
+    );
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { principal, memberships: [] });
+  });
+
+  it("returns 401 for a bad Bearer even when the cookie is live", async () => {
+    const store = memoryStore();
+    const { cookie } = await mintCookie(store);
+    const res = await handleMe(
+      new Request(`${ORIGIN}/api/me`, {
+        headers: { authorization: "Bearer", cookie },
+      }),
+      env,
+      store,
+      memoryCatalog(),
+    );
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: "unauthorized" });
+  });
+
   it("returns memberships for a principal with one membership", async () => {
     const store = memoryStore();
     const { principal, cookie } = await mintCookie(store);

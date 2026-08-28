@@ -83,4 +83,58 @@ describe("wiki store", () => {
     assert.equal(await wiki.linkNodeWorkItem("n1", "wi-1"), "exists");
     assert.deepEqual(await wiki.listNodeWorkItemIds("n1"), ["wi-1"]);
   });
+
+  it("include, ref, and attach stay independent", async () => {
+    const wiki = memoryWikiStore();
+    await wiki.insertNode(farmNote({ id: "n1", title: "Plan" }));
+    await wiki.insertNode(
+      farmNote({ id: "n2", title: "Requirements", content: "# Req" }),
+    );
+    await wiki.insertNode(farmNote({ id: "n3", title: "Other plan" }));
+    await wiki.insertNode(
+      farmNote({
+        id: "n-other",
+        workspace_id: "ws-other",
+        title: "Other ws",
+      }),
+    );
+
+    assert.equal(await wiki.includeNode("n1", "n2", 0), "inserted");
+    const includes = await wiki.listIncludes("n1");
+    assert.deepEqual(includes, [
+      { id: "n2", title: "Requirements", position: 0 },
+    ]);
+    assert.equal("content" in includes[0]!, false);
+    assert.deepEqual(await wiki.listRefs("n1"), []);
+
+    assert.equal(await wiki.refNode("n1", "n3"), "inserted");
+    const refs = await wiki.listRefs("n1");
+    assert.deepEqual(refs, [{ id: "n3", title: "Other plan" }]);
+    assert.equal("content" in refs[0]!, false);
+    assert.deepEqual(await wiki.listIncludes("n1"), [
+      { id: "n2", title: "Requirements", position: 0 },
+    ]);
+
+    assert.equal(await wiki.includeNode("n1", "n2", 0), "exists");
+    assert.equal(await wiki.refNode("n1", "n2"), "inserted");
+    const bothIncludes = await wiki.listIncludes("n1");
+    const bothRefs = await wiki.listRefs("n1");
+    assert.equal(bothIncludes.some((row) => row.id === "n2"), true);
+    assert.equal(bothRefs.some((row) => row.id === "n2"), true);
+    assert.equal("content" in (bothIncludes.find((r) => r.id === "n2") ?? {}), false);
+
+    assert.equal(await wiki.linkNodeWorkItem("n2", "wi-1"), "inserted");
+    assert.deepEqual(await wiki.listNodeWorkItemIds("n2"), ["wi-1"]);
+    assert.equal((await wiki.listIncludes("n1")).length, 1);
+    assert.equal((await wiki.listRefs("n1")).some((r) => r.id === "n3"), true);
+
+    assert.equal(await wiki.refNode("n1", "n-other"), "inserted");
+    const edges = await wiki.listIncludeEdges("ws-1");
+    assert.deepEqual(edges, [{ from_id: "n1", to_id: "n2" }]);
+    assert.equal(
+      edges.some((e) => e.to_id === "n-other" || e.to_id === "n3"),
+      false,
+    );
+  });
 });
+

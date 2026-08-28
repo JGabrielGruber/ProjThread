@@ -1,5 +1,6 @@
 import { parseSessionId } from "../lib/cookies.ts";
 import { newId } from "../lib/id.ts";
+import { wouldCycleIncludes } from "../lib/node-rel.ts";
 import {
   rejectContent,
   rejectSummary,
@@ -64,14 +65,20 @@ export async function handleWiki(
     if (!membership) {
       return Response.json({ error: "forbidden" }, { status: 403 });
     }
-    if (!nodePath.workItems && request.method === "GET") {
+    if (!nodePath.tail && request.method === "GET") {
       return nodeResponse(wiki, node);
     }
-    if (!nodePath.workItems && request.method === "PATCH") {
+    if (!nodePath.tail && request.method === "PATCH") {
       return patchNode(request, wiki, node);
     }
-    if (nodePath.workItems && request.method === "POST") {
+    if (nodePath.tail === "work-items" && request.method === "POST") {
       return linkWorkItem(request, catalog, wiki, node);
+    }
+    if (nodePath.tail === "includes" && request.method === "POST") {
+      return includeChild(request, wiki, node);
+    }
+    if (nodePath.tail === "refs" && request.method === "POST") {
+      return refNode(request, wiki, node);
     }
     return Response.json({ error: "not_found" }, { status: 404 });
   }
@@ -225,13 +232,72 @@ async function linkWorkItem(
   return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
 }
 
+async function includeChild(
+  request: Request,
+  wiki: WikiStore,
+  node: NodeRow,
+): Promise<Response> {
+  const body = await readJson(request);
+  if (!isRecord(body) || typeof body.child_id !== "string" || body.child_id === "") {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const child = await wiki.getNode(body.child_id);
+  if (!child || child.workspace_id !== node.workspace_id) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const edges = await wiki.listIncludeEdges(node.workspace_id);
+  if (wouldCycleIncludes(node.id, child.id, edges)) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  let position: number;
+  if ("position" in body) {
+    if (typeof body.position !== "number" || !Number.isInteger(body.position)) {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+    position = body.position;
+  } else {
+    const existing = await wiki.listIncludes(node.id);
+    const max = existing.reduce((m, row) => Math.max(m, row.position), -1);
+    position = max + 1;
+  }
+  const result = await wiki.includeNode(node.id, child.id, position);
+  return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
+}
+
+async function refNode(
+  request: Request,
+  wiki: WikiStore,
+  node: NodeRow,
+): Promise<Response> {
+  const body = await readJson(request);
+  if (!isRecord(body) || typeof body.to_id !== "string" || body.to_id === "") {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if ("position" in body) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (body.to_id === node.id) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const target = await wiki.getNode(body.to_id);
+  if (!target || target.workspace_id !== node.workspace_id) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const result = await wiki.refNode(node.id, target.id);
+  return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
+}
+
 async function nodeResponse(
   wiki: WikiStore,
   node: NodeRow,
   status = 200,
 ): Promise<Response> {
-  const work_item_ids = await wiki.listNodeWorkItemIds(node.id);
-  return Response.json({ node, work_item_ids }, { status });
+  const [work_item_ids, includes, refs] = await Promise.all([
+    wiki.listNodeWorkItemIds(node.id),
+    wiki.listIncludes(node.id),
+    wiki.listRefs(node.id),
+  ]);
+  return Response.json({ node, work_item_ids, includes, refs }, { status });
 }
 
 function parseType(value: unknown, optional: boolean): NodeType | null {
@@ -278,18 +344,23 @@ function matchWorkspaceNodes(pathname: string): string | null {
 
 function matchNodePath(
   pathname: string,
-): { id: string; workItems: boolean } | null {
+): { id: string; tail: "work-items" | "includes" | "refs" | null } | null {
   const prefix = "/api/nodes/";
   if (!pathname.startsWith(prefix)) return null;
   const rest = pathname.slice(prefix.length);
   const slash = rest.indexOf("/");
   if (slash === -1) {
-    return rest && !rest.includes("/") ? { id: rest, workItems: false } : null;
+    return rest && !rest.includes("/") ? { id: rest, tail: null } : null;
   }
   const id = rest.slice(0, slash);
   const tail = rest.slice(slash + 1);
-  if (!id || tail !== "work-items") return null;
-  return { id, workItems: true };
+  if (
+    !id ||
+    (tail !== "work-items" && tail !== "includes" && tail !== "refs")
+  ) {
+    return null;
+  }
+  return { id, tail };
 }
 
 async function readJson(request: Request): Promise<unknown> {

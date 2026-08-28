@@ -356,9 +356,13 @@ describe("handleWiki", () => {
     const body = (await res.json()) as {
       node: { content: string };
       work_item_ids: string[];
+      includes: unknown[];
+      refs: unknown[];
     };
     assert.equal(body.node.content, "# Hi");
     assert.deepEqual(body.work_item_ids, []);
+    assert.deepEqual(body.includes, []);
+    assert.deepEqual(body.refs, []);
   });
 
   it("POST empty title is 400", async () => {
@@ -555,4 +559,446 @@ describe("handleWiki", () => {
     const body = (await second.json()) as { work_item_ids: string[] };
     assert.deepEqual(body.work_item_ids, ["wi-1"]);
   });
+
+  it("GET fresh node has empty includes and refs", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Plan" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node, includes, refs, work_item_ids } = (await created.json()) as {
+      node: { id: string };
+      includes: unknown[];
+      refs: unknown[];
+      work_item_ids: string[];
+    };
+    assert.deepEqual(includes, []);
+    assert.deepEqual(refs, []);
+    assert.deepEqual(work_item_ids, []);
+
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const got = (await res.json()) as {
+      includes: unknown[];
+      refs: unknown[];
+      work_item_ids: string[];
+    };
+    assert.deepEqual(got.includes, []);
+    assert.deepEqual(got.refs, []);
+    assert.deepEqual(got.work_item_ids, []);
+  });
+
+  it("POST includes then GET splits content off the outline", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const parent = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const child = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Requirements", content: "# Body" },
+    );
+
+    const included = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(included.status, 201);
+    const includedBody = (await included.json()) as {
+      includes: Record<string, unknown>[];
+    };
+    assert.equal(includedBody.includes[0]?.title, "Requirements");
+    assert.equal("content" in (includedBody.includes[0] ?? {}), false);
+
+    const childGet = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${child.id}`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const childBody = (await childGet.json()) as { includes: unknown[] };
+    assert.deepEqual(childBody.includes, []);
+
+    const again = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(again.status, 200);
+    const againBody = (await again.json()) as { includes: unknown[] };
+    assert.equal(againBody.includes.length, 1);
+  });
+
+  it("POST refs cites without becoming an include; reverse ref is 201", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const plan = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const other = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Other plan" },
+    );
+    const req = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Requirements" },
+    );
+    await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: req.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+
+    const cited = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/refs`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ to_id: other.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(cited.status, 201);
+    const citedBody = (await cited.json()) as {
+      refs: { id: string }[];
+      includes: { id: string }[];
+    };
+    assert.equal(citedBody.refs[0]?.id, other.id);
+    assert.equal(citedBody.includes.length, 1);
+    assert.equal(citedBody.includes[0]?.id, req.id);
+
+    const reverse = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${other.id}/refs`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ to_id: plan.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(reverse.status, 201);
+  });
+
+  it("POST includes that would cycle is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const parent = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const child = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Part" },
+    );
+    await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+
+    const cycle = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${child.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: parent.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(cycle.status, 400);
+
+    const got = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const body = (await got.json()) as { includes: unknown[] };
+    assert.equal(body.includes.length, 1);
+  });
+
+  it("POST includes other-workspace child is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const parent = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    await wiki.insertNode({
+      id: "n-other",
+      workspace_id: "ws-other",
+      organization_id: bundle.organization.id,
+      type: "note",
+      payload_kind: "markdown",
+      title: "Other ws",
+      summary: null,
+      content: null,
+      blob_key: null,
+      mime_type: null,
+      byte_size: null,
+      filename: null,
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    });
+
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: "n-other" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("POST refs with position is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const plan = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const other = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Other" },
+    );
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/refs`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ to_id: other.id, position: 0 }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("POST includes then work-items neither clobbers", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    catalog.seedWorkItem(farmWorkItem(bundle, "wi-1"));
+    const plan = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const child = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Part" },
+    );
+    await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const linked = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/work-items`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ work_item_id: "wi-1" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(linked.status, 201);
+    const body = (await linked.json()) as {
+      includes: { id: string }[];
+      work_item_ids: string[];
+    };
+    assert.deepEqual(body.work_item_ids, ["wi-1"]);
+    assert.equal(body.includes[0]?.id, child.id);
+  });
+
+  it("POST includes outsider 403, missing 404, no cookie 401", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const plan = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const child = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Part" },
+    );
+
+    const unauth = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/includes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      memoryStore(),
+      catalog,
+      wiki,
+    );
+    assert.equal(unauth.status, 401);
+
+    const missing = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/missing/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(missing.status, 404);
+
+    const outsiderSessions = memoryStore();
+    const outsider = await mintCookie(outsiderSessions);
+    const forbidden = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${plan.id}/includes`, {
+        method: "POST",
+        headers: {
+          cookie: outsider.cookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      env,
+      outsiderSessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(forbidden.status, 403);
+  });
 });
+
+async function postNode(
+  cookie: string,
+  catalog: CatalogStore,
+  wiki: WikiStore,
+  bundle: TenantBundle,
+  sessions: SessionStore,
+  body: { title: string; content?: string },
+): Promise<{ id: string; title: string }> {
+  const res = await handleWiki(
+    new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    env,
+    sessions,
+    catalog,
+    wiki,
+  );
+  assert.equal(res.status, 201);
+  const payload = (await res.json()) as {
+    node: { id: string; title: string };
+  };
+  return payload.node;
+}

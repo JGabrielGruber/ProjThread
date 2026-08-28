@@ -245,6 +245,16 @@ Worker catalog handlers stay inside **10 ms CPU** (Free). Room work is the DO (3
 7. Tokens (Grok/X-sharp), PWA installability  
 8. Deploy: `APP_ORIGIN`, Access, D1, custom domain as config  
 
+## Parked: node edges
+
+Vertices exist (`node`). Plan 9 shipped **both** HTTP kinds. PWA outline/attachment chrome stays parked.
+
+- One table: `node_rel (from_id, to_id, kind, position)`.
+- **`includes`:** `POST /api/nodes/:id/includes` `{ child_id, position? }`. Ordered parts; cycle-checked; `GET` returns `includes: [{ id, title, position }]` without `content`.
+- **`ref`:** `POST /api/nodes/:id/refs` `{ to_id }`. Cite; cycles allowed; no `position`. `GET` returns `refs: [{ id, title }]`.
+- **Attach** remains `node_work_item`. Independent of `node_rel`.
+- Still out: ontology editor, graph canvas, node versioning, transclusion, child rooms, PWA outline chrome.
+
 ## Named absences
 
 MCP. Destination login / public signup. Google OAuth. Bearer agents. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. **PrimeVue** (v5 is not OSS; do not re-add). PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).

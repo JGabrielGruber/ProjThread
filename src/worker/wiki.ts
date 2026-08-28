@@ -1,3 +1,4 @@
+import type { IncludeEdge } from "../lib/node-rel.ts";
 import type { D1Database } from "./env.ts";
 
 export type NodeType = "note" | "decision" | "process" | "research";
@@ -40,6 +41,10 @@ export type NodePatch = {
   updated_at: string;
 };
 
+export type RelKind = "includes" | "ref";
+export type IncludeRow = { id: string; title: string; position: number };
+export type RefRow = { id: string; title: string };
+
 export type WikiStore = {
   listNodes(workspaceId: string): Promise<NodeListRow[]>;
   getNode(id: string): Promise<NodeRow | null>;
@@ -50,6 +55,15 @@ export type WikiStore = {
     nodeId: string,
     workItemId: string,
   ): Promise<"inserted" | "exists">;
+  listIncludes(fromId: string): Promise<IncludeRow[]>;
+  listRefs(fromId: string): Promise<RefRow[]>;
+  listIncludeEdges(workspaceId: string): Promise<IncludeEdge[]>;
+  includeNode(
+    fromId: string,
+    toId: string,
+    position: number,
+  ): Promise<"inserted" | "exists">;
+  refNode(fromId: string, toId: string): Promise<"inserted" | "exists">;
 };
 
 const NODE_LIST_SELECT = `SELECT id, workspace_id, organization_id, type, payload_kind, title, summary, created_at, updated_at
@@ -168,15 +182,89 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         .first<{ node_id: string }>();
       return row != null ? "inserted" : "exists";
     },
+    async listIncludes(fromId) {
+      const { results } = await db
+        .prepare(
+          `SELECT n.id, n.title, r.position
+FROM node_rel r
+JOIN node n ON n.id = r.to_id
+WHERE r.from_id = ? AND r.kind = 'includes'
+ORDER BY r.position, r.to_id`,
+        )
+        .bind(fromId)
+        .all<IncludeRow>();
+      return results;
+    },
+    async listRefs(fromId) {
+      const { results } = await db
+        .prepare(
+          `SELECT n.id, n.title
+FROM node_rel r
+JOIN node n ON n.id = r.to_id
+WHERE r.from_id = ? AND r.kind = 'ref'
+ORDER BY n.title, n.id`,
+        )
+        .bind(fromId)
+        .all<RefRow>();
+      return results;
+    },
+    async listIncludeEdges(workspaceId) {
+      const { results } = await db
+        .prepare(
+          `SELECT r.from_id, r.to_id
+FROM node_rel r
+JOIN node f ON f.id = r.from_id
+JOIN node t ON t.id = r.to_id
+WHERE r.kind = 'includes' AND f.workspace_id = ? AND t.workspace_id = ?`,
+        )
+        .bind(workspaceId, workspaceId)
+        .all<IncludeEdge>();
+      return results;
+    },
+    async includeNode(fromId, toId, position) {
+      const existing = await db
+        .prepare(
+          `SELECT to_id FROM node_rel
+WHERE from_id = ? AND to_id = ? AND kind = 'includes'`,
+        )
+        .bind(fromId, toId)
+        .first<{ to_id: string }>();
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO node_rel (from_id, to_id, kind, position)
+VALUES (?, ?, 'includes', ?)`,
+        )
+        .bind(fromId, toId, position)
+        .run();
+      return existing != null ? "exists" : "inserted";
+    },
+    async refNode(fromId, toId) {
+      const row = await db
+        .prepare(
+          `INSERT OR IGNORE INTO node_rel (from_id, to_id, kind, position)
+VALUES (?, ?, 'ref', NULL) RETURNING to_id`,
+        )
+        .bind(fromId, toId)
+        .first<{ to_id: string }>();
+      return row != null ? "inserted" : "exists";
+    },
   };
 }
 
 export function memoryWikiStore(): WikiStore {
   const nodes = new Map<string, NodeRow>();
   const links = new Map<string, { node_id: string; work_item_id: string }>();
+  const rels = new Map<
+    string,
+    { from_id: string; to_id: string; kind: RelKind; position: number | null }
+  >();
 
   function linkKey(nodeId: string, workItemId: string): string {
     return `${nodeId}:${workItemId}`;
+  }
+
+  function relKey(fromId: string, toId: string, kind: RelKind): string {
+    return `${fromId}:${toId}:${kind}`;
   }
 
   return {
@@ -215,6 +303,69 @@ export function memoryWikiStore(): WikiStore {
       const key = linkKey(nodeId, workItemId);
       if (links.has(key)) return "exists";
       links.set(key, { node_id: nodeId, work_item_id: workItemId });
+      return "inserted";
+    },
+    async listIncludes(fromId) {
+      return [...rels.values()]
+        .filter((row) => row.from_id === fromId && row.kind === "includes")
+        .map((row) => {
+          const node = nodes.get(row.to_id);
+          return {
+            id: row.to_id,
+            title: node?.title ?? "",
+            position: row.position ?? 0,
+          };
+        })
+        .sort((a, b) => {
+          if (a.position !== b.position) return a.position - b.position;
+          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+        });
+    },
+    async listRefs(fromId) {
+      return [...rels.values()]
+        .filter((row) => row.from_id === fromId && row.kind === "ref")
+        .map((row) => {
+          const node = nodes.get(row.to_id);
+          return { id: row.to_id, title: node?.title ?? "" };
+        })
+        .sort((a, b) => {
+          if (a.title !== b.title) return a.title < b.title ? -1 : 1;
+          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+        });
+    },
+    async listIncludeEdges(workspaceId) {
+      return [...rels.values()]
+        .filter((row) => row.kind === "includes")
+        .filter((row) => {
+          const from = nodes.get(row.from_id);
+          const to = nodes.get(row.to_id);
+          return (
+            from?.workspace_id === workspaceId &&
+            to?.workspace_id === workspaceId
+          );
+        })
+        .map((row) => ({ from_id: row.from_id, to_id: row.to_id }));
+    },
+    async includeNode(fromId, toId, position) {
+      const key = relKey(fromId, toId, "includes");
+      const existed = rels.has(key);
+      rels.set(key, {
+        from_id: fromId,
+        to_id: toId,
+        kind: "includes",
+        position,
+      });
+      return existed ? "exists" : "inserted";
+    },
+    async refNode(fromId, toId) {
+      const key = relKey(fromId, toId, "ref");
+      if (rels.has(key)) return "exists";
+      rels.set(key, {
+        from_id: fromId,
+        to_id: toId,
+        kind: "ref",
+        position: null,
+      });
       return "inserted";
     },
   };

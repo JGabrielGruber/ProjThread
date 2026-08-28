@@ -15,5 +15,6 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 7. Skin + PWA | `2026-08-27-projthread-skin.md` | Tokens (dark+light), tiny Modal, PWA manifest+SW |
 | 7b. Chrome | `2026-08-27-projthread-chrome.md` | App shell, board cards (Move in modal), wiki create modal + edit surface, overlay status toast, config sections |
 | 8. Deploy | *(parked — no custom domain yet)* | Custom domain as config. workers.dev + Access AUD already live |
+| **9. Node rel** | `2026-08-28-projthread-node-rel.md` | `node_rel` `includes` + `ref` HTTP; attach stays `node_work_item`; no PWA |
 
-**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy.
+**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy. Plan 9 landed.

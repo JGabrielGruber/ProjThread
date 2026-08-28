@@ -19,4 +19,4 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **10. Session Bearer** | `2026-08-28-projthread-session-bearer.md` | App HTTP Bearer = existing `session.id`; admin Issue token (`set_cookie: false`); no MCP |
 | **11. Catalog MCP** | `2026-08-28-projthread-catalog-mcp.md` | Same-origin `/mcp`; Bearer session; wrap catalog/wiki HTTP; no room, no OAuth |
 
-**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy. Plan 11 landed locally. Do not start OAuth.
+**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy. Plan 11 landed. Do not start OAuth.

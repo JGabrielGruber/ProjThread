@@ -10,7 +10,7 @@ A Cloudflare-native workspace where **humans (and later agents) talk in a live r
 
 First data (not product scope): farm / egg-production systematization, and José Gabriel Gruber Consultoria — two `organization` rows, one operator.
 
-v1 is a **usable PWA + HTTP API**. MCP, Grok Bots as native agents, Vectorize, and destination login are later adapters over this contract.
+v1 is a **usable PWA + HTTP API**. Catalog MCP is a thin adapter over that HTTP. Grok Bots as native load, Vectorize, and destination login stay later.
 
 ## Product
 
@@ -56,9 +56,10 @@ Workspace ≠ Project. Product name ≠ the Project entity. In dotproj, Category
 | `/admin`, `/admin/*` | Static admin SPA + history shell | Access |
 | `/api/admin/*` | Worker | Access JWT (`Cf-Access-Jwt-Assertion`). Local: `ADMIN_DEV_SECRET` like PalmEngine |
 | `/api/*` (app) | Worker | Session cookie **or** `Authorization: Bearer <session.id>` → D1 `session` → `principal` + membership |
+| `/mcp` | Worker | Bearer `<session.id>` only. Stateless Streamable HTTP over catalog/wiki. Cookie ignored. |
 | WS `/api/rooms/:id` | Worker upgrade → Room DO | Cookie only |
 
-`assets.run_worker_first`: `/api/*`, `/admin` (HTML shell). Page loads of the PWA are not Worker requests.
+`assets.run_worker_first`: `/api/*`, `/mcp`, `/admin` (HTML shell). Page loads of the PWA are not Worker requests.
 
 **Bindings (v1):** `DB` (one D1), `Room` (SQLite-backed Durable Object). Unbound: Vectorize, R2, Queue, KV, Workers AI.
 
@@ -252,8 +253,17 @@ Plan 10 shipped a **thin agent wire**, not a new identity:
 - Same D1 `session` row. `Authorization: Bearer <session.id>` on app HTTP (`/api/me`, catalog, wiki). Cookie unchanged for the PWA.
 - If Bearer is present, do not fall back to cookie.
 - Admin: default mint still Set-Cookie (Enter as). `{ set_cookie: false }` returns the id and does not clobber the operator cookie (Issue token).
-- WS stays cookie. MCP, OAuth, and a distinct agent-token table stay absences.
+- WS stays cookie. Distinct agent OAuth tokens stay an absence. Catalog MCP is plan 11.
 - Membership stays Config (create agent principal in admin, add member, then issue).
+
+## Parked: catalog MCP
+
+Plan 11 ships a **thin adapter**, not a second product:
+
+- Same-origin `POST /mcp` Streamable HTTP (`createMcpHandler`, stateless, JSON responses).
+- Same D1 `session` as Bearer on app HTTP. Cookie is ignored on `/mcp`.
+- Tools wrap catalog + wiki HTTP (cards and markdown nodes). Room / WS stay out.
+- OAuth, KV, `McpAgent`, and a distinct agent-token table stay absences.
 
 ## Parked: node edges
 
@@ -267,7 +277,7 @@ Vertices exist (`node`). Plan 9 shipped **both** HTTP kinds. PWA outline/attachm
 
 ## Named absences
 
-MCP. Destination login / public signup. Google OAuth. Distinct agent OAuth tokens. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. **PrimeVue** (v5 is not OSS; do not re-add). PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).
+Destination login / public signup. Google OAuth. Distinct agent OAuth tokens. Room MCP. Agent digest of rooms → nodes. Chief of Staff. Vectorize. R2 (files **and** transcript checkpoint). Queues. KV. Channels. Child rooms. Draggable non-modal windows. WebRTC / voice. Subdomain-per-tenant. **Chores** (do not port from dotproj; that wound is why Palm exists). Palm integration. **PrimeVue** (v5 is not OSS; do not re-add). PrimeVue DataGrid Pro. Ontology editor. Graph canvas. Nord. DaisyUI as product chrome. Wiki WYSIWYG. Wiki **blob upload** / R2 / in-Markdown images. Markdown on the chat tape. Node versioning (Knowkey).
 
 ## Load classes
 

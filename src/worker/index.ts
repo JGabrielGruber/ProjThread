@@ -4,6 +4,7 @@ import { handleCatalog } from "./catalog-http.ts";
 import { d1CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import { handleMe } from "./me.ts";
+import { handleMcp, type WorkerContext } from "./mcp.ts";
 import { handleRoom } from "./room-http.ts";
 import { d1SessionStore } from "./session.ts";
 import { handleAdminShell, isAdminPath } from "./shell.ts";
@@ -13,11 +14,15 @@ import { d1WikiStore } from "./wiki.ts";
 export { Room } from "../room/room.ts";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
     const url = new URL(request.url);
     const store = d1SessionStore(env.DB);
     const catalog = d1CatalogStore(env.DB);
     const wiki = d1WikiStore(env.DB);
+
+    if (url.pathname === "/mcp") {
+      return handleMcp(request, env, store, catalog, wiki, ctx);
+    }
 
     if (url.pathname.startsWith("/api/admin")) {
       if (!(await authorizeAdmin(request, env))) return adminForbidden(request);

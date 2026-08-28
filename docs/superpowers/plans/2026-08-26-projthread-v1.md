@@ -17,5 +17,6 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | 8. Deploy | *(parked — no custom domain yet)* | Custom domain as config. workers.dev + Access AUD already live |
 | **9. Node rel** | `2026-08-28-projthread-node-rel.md` | `node_rel` `includes` + `ref` HTTP; attach stays `node_work_item`; no PWA |
 | **10. Session Bearer** | `2026-08-28-projthread-session-bearer.md` | App HTTP Bearer = existing `session.id`; admin Issue token (`set_cookie: false`); no MCP |
+| **11. Catalog MCP** | `2026-08-28-projthread-catalog-mcp.md` | Same-origin `/mcp`; Bearer session; wrap catalog/wiki HTTP; no room, no OAuth |
 
-**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy. Plan 10 landed. Do not start MCP.
+**Now:** no open slice. Park plan 8 until a custom domain exists. Do not write or implement Deploy. Plan 11 landed locally. Do not start OAuth.

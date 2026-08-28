@@ -3,10 +3,10 @@
 Read this file first after compact. It is the project map, not the archive.
 
 **Repo:** https://github.com/JGabrielGruber/ProjThread (also local `~/Projects/ProjThread`)
-**Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie **or** `Authorization: Bearer <session.id>` on app `/api/*`, cookie on WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
+**Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie **or** `Authorization: Bearer <session.id>` on app `/api/*`, Bearer on `/mcp`, cookie on WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy heavy screens. **PWA product** (kanban + room + **wiki** + **config**) and **super-admin** = our components, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
-**Now:** no open slice (see `docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start MCP. Do not start a slice that STATUS does not name.
+**Now:** no open slice (see `docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start a slice that STATUS does not name.
 
 ## Pickup (coding agents, including Grok Build)
 
@@ -21,7 +21,7 @@ Stop rules:
 - Do **not** treat the Grok Chat draft as a spec.
 - Do **not** read `docs/context/` unless a human asked a history question.
 - Do **not** spawn a chain of sub-agents. One slice, then stop and update `docs/STATUS.md`.
-- Do **not** reopen named absences (MCP, Vectorize, R2, Channels, child rooms, Chores).
+- Do **not** reopen named absences (OAuth, Vectorize, R2, Channels, child rooms, Chores).
 - Quota is scarce. Prefer a short plan file over starting implementation.
 
 ## Read next
@@ -52,7 +52,7 @@ Spec is approved. Implement **only** the open plan in `docs/STATUS.md`. If there
 
 ## Invariants (proposed — not frozen)
 
-- Page loads of the PWA are **static assets**. Worker runs for `/api/*` and WebSocket upgrade only.
+- Page loads of the PWA are **static assets**. Worker runs for `/api/*`, `/mcp`, and WebSocket upgrade only.
 - Tenant isolation is **row-level** (`organization_id` on every tenant-scoped table), one Worker, one D1. Not per-tenant Workers, not required subdomains.
 - Hostnames and origins are **configuration**, never literals in application code.
 - The product is a **live room**, not a ticket tracker. UX is Grok Bot with a card on the side, not Jira.
@@ -65,7 +65,7 @@ Spec is approved. Implement **only** the open plan in `docs/STATUS.md`. If there
 - **Nodes** are workspace-graph vertices. Semantic `type` ≠ `payload_kind` (`markdown` \| `blob`). v1 writes markdown only; blob columns reserved, R2 unbound. Markdown read view is phone-calm. M2M links to projects and work items. Not the chat archive.
 - Principals include humans **and** agents. Schema must not assume “user = Google account”. Agents are a **paid-plan load class**, not a v1 feature.
 - **Auth (v1 workaround):** Cloudflare Access on `/admin` and `/api/admin/*`. Admin **vends** a D1 `session`: **Enter as** sets HttpOnly `pt_session`; **Issue token** (`set_cookie: false`) returns the id for `Authorization: Bearer`. Same origin. App HTTP accepts cookie or Bearer (Bearer present → no cookie fallback). WS upgrade uses the cookie. Not the destination login. Distinct agent OAuth later.
-- MCP, Vectorize, R2, Chief-of-Staff agent are **named absences** until a version spec takes them.
+- Vectorize, R2, Chief-of-Staff agent, MCP OAuth, and room MCP are **named absences** until a version spec takes them. Catalog `/mcp` is live (Bearer wrap of catalog/wiki HTTP).
 
 ## Free tier (do not drift)
 
@@ -73,7 +73,7 @@ Workers Free. Daily caps reset 00:00 UTC.
 
 | Resource | Limit (Free) | How we stay inside |
 | --- | --- | --- |
-| Worker requests | 100k/day, 1000/min | Static PWA. Worker for `/api/*` and WS upgrade. No polling. |
+| Worker requests | 100k/day, 1000/min | Static PWA. Worker for `/api/*`, `/mcp`, and WS upgrade. No polling. |
 | Worker CPU | 10 ms / request | Thin upgrade + catalog. Room work runs on the DO (30s CPU), not the Worker. |
 | D1 | 10 DBs, 500 MB/DB, 5M reads/day, 100k writes/day | Catalog + work-item events. Not the chat log. |
 | Durable Objects | 100k requests/day (includes WS messages), 13k GB-s/day, 5 GB SQL | One DO per room. Hibernate idle sockets. Do not bill keystrokes as messages. |

@@ -1,12 +1,7 @@
-# Agent-facing ProjThread
+# MCP implementers
 
-How to use `/mcp`. Tools execute; this file is judgment.
+This file is for agents **building** ProjThread (`src/worker/mcp.ts`). It is not the product skill.
 
-1. **Start** with `session_briefing`. If you have one membership, omit `workspace_id`. If you get `memberships` and no `cards`, call again with a `workspace_id`.
-2. **Search then read.** `wiki_search` → `wiki_read`. `card_search` → `card_get`. Do not dump the wiki into context.
-3. **File work as a card.** `card_search` first. `card_create` is idempotent on title in a project. Do not invent a second card for the same work.
-4. **Working memory is Activity.** `activity_log` (`decision` / `occurrence` / `note`). `activity_recent` before repeating an approach. Stage changes are `card_move` (reason required).
-5. **Wiki writes are canonical.** `wiki_write` only after `wiki_read` on that node this turn. Create with `wiki_create` when no page should hold it. Compose vs cite: `compose_node` nests; `cite_node` points; `attach_node_work_item` links a card.
-6. **Never:** room/chat tools (they are not here), Vectorize, OAuth, overwriting wiki without a read, using wiki as a diary of failed attempts.
+**Operators** (Grok Bot, or Grok Build using `/mcp` as a collaborator): `.grok/skills/using-projthread/SKILL.md`.
 
-Ids are stable. Names are for search.
+Still wrap catalog/wiki HTTP. Do not re-add wrap names (`me`, `list_*`, `get_node`, …). Do not add room tools. Node markdown stays in `content[0]`; envelope `content[1]` must not repeat `node.content`.

@@ -26,7 +26,7 @@ const MCP_OPTIONS = {
   legacy: "stateless" as const,
 };
 
-const MCP_INSTRUCTIONS = `ProjThread catalog. Start with session_briefing. Search then read (wiki_search → wiki_read, card_search → card_get). File cards with card_create after search; log decisions with activity_log, not wiki. wiki_write only after wiki_read this turn. One membership: omit workspace_id. Chat tape is not on this server.`;
+const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory (decision, occurrence, note), not a second wiki. Start with session_briefing. Search then read (wiki_search → wiki_read, card_search → card_get). File cards with card_create after search; log decisions with activity_log. wiki_write only after wiki_read this turn. One membership: omit workspace_id.`;
 
 const HITS_CAP = 50;
 

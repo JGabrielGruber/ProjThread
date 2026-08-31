@@ -258,13 +258,15 @@ Plan 10 shipped a **thin agent wire**, not a new identity:
 
 ## Parked: catalog MCP
 
-Plan 11 shipped a **thin adapter**, not a second product. Plan 12 hardens the Bot leftover:
+Plan 11 shipped a **thin adapter**. Plan 12 hardened markdown + compose/cite. Plan 13 **replaced** the HTTP-wrap names with an agent-facing façade (`2026-08-31-projthread-mcp-facade.md`):
 
 - Same-origin `POST /mcp` Streamable HTTP (`createMcpHandler`, stateless, JSON responses).
 - Same D1 `session` as Bearer on app HTTP. Cookie is ignored on `/mcp`.
-- Tools wrap catalog + wiki HTTP (cards and markdown nodes). Room / WS stay out.
-- Node tools (`get_node`, `create_node`, `update_node`, `compose_node`, `cite_node`): `content[0].text` is raw markdown; GET JSON is `content[1].text`.
+- Workspace is implicit when the principal has one membership. Project is not bound to the session.
+- Tools are intents: `session_briefing`, `wiki_search` / `wiki_read` / `wiki_create` / `wiki_write`, `compose_node` / `cite_node` / `attach_node_work_item`, `card_search` / `card_get` / `card_create` / `card_rename` / `card_move`, `activity_log` / `activity_recent`. They still wrap catalog + wiki HTTP. Wrap names (`me`, `list_*`, `get_work_item`, `get_node`, …) are gone. Room / WS stay out.
+- Node tools that return a page: `content[0].text` is raw markdown; envelope JSON in `content[1]` does not repeat `node.content`.
 - `compose_node` wraps `POST .../includes`; `cite_node` wraps `POST .../refs`. Attach stays `attach_node_work_item`.
+- Process skill: `docs/agent-facing.md` plus MCP `instructions`.
 - OAuth, KV, `McpAgent`, a distinct agent-token table, and room MCP stay absences.
 
 ## Parked: node edges

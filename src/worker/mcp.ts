@@ -26,12 +26,45 @@ const MCP_OPTIONS = {
   legacy: "stateless" as const,
 };
 
+const MCP_INSTRUCTIONS = `ProjThread catalog. Start with session_briefing. Search then read (wiki_search → wiki_read, card_search → card_get). File cards with card_create after search; log decisions with activity_log, not wiki. wiki_write only after wiki_read this turn. One membership: omit workspace_id. Chat tape is not on this server.`;
+
+const HITS_CAP = 50;
+
+const WORKSPACE_REQUIRED = {
+  error: "workspace_required",
+  hint: "Pass workspace_id from session_briefing.",
+} as const;
+
 type Deps = {
   env: Env;
   sessions: SessionStore;
   catalog: CatalogStore;
   wiki: WikiStore;
   sessionId: string;
+};
+
+type ToolOut = {
+  content: { type: "text"; text: string }[];
+  isError?: true;
+};
+
+type MembershipView = {
+  workspace_id: string;
+  workspace_name: string;
+  role: "owner" | "member";
+};
+
+type MePayload = {
+  principal: { id: string; type: string; display_name: string };
+  memberships: MembershipView[];
+};
+
+type CompactCard = {
+  id: string;
+  title: string;
+  stage_key: string;
+  project_id: string;
+  updated_at: string;
 };
 
 function compactJson(record: Record<string, unknown>): string {
@@ -51,15 +84,31 @@ function errorText(status: number, text: string): string {
   }
 }
 
+function jsonResult(obj: unknown): ToolOut {
+  return { content: [{ type: "text", text: JSON.stringify(obj) }] };
+}
+
+function errorResult(obj: Record<string, unknown>): ToolOut {
+  return {
+    isError: true,
+    content: [{ type: "text", text: JSON.stringify(obj) }],
+  };
+}
+
+function isErrorOut(value: unknown): value is ToolOut & { isError: true } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as ToolOut).isError === true
+  );
+}
+
 async function wrap(
   deps: Deps,
   path: string,
   init: RequestInit = {},
   mode: "json" | "node" = "json",
-): Promise<{
-  content: { type: "text"; text: string }[];
-  isError?: true;
-}> {
+): Promise<ToolOut> {
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${deps.sessionId}`);
   const request = new Request(`http://mcp.internal${path}`, { ...init, headers });
@@ -92,182 +141,311 @@ async function wrap(
   return { content: [{ type: "text", text: text || "{}" }] };
 }
 
-function nodeToolResult(text: string): {
-  content: { type: "text"; text: string }[];
-} {
-  let parsed: { node?: { content?: unknown } };
+function nodeEnvelope(text: string): { markdown: string; envelope: string } {
+  let parsed: { node?: Record<string, unknown> };
   try {
-    parsed = JSON.parse(text) as { node?: { content?: unknown } };
+    parsed = JSON.parse(text) as { node?: Record<string, unknown> };
   } catch {
-    return { content: [{ type: "text", text: text || "{}" }] };
+    return { markdown: "", envelope: text || "{}" };
   }
   const markdown =
     typeof parsed.node?.content === "string" ? parsed.node.content : "";
+  const envelope: Record<string, unknown> = { ...parsed };
+  if (parsed.node && typeof parsed.node === "object") {
+    const {
+      content: _content,
+      blob_key: _blobKey,
+      mime_type: _mimeType,
+      byte_size: _byteSize,
+      filename: _filename,
+      ...rest
+    } = parsed.node;
+    envelope.node = rest;
+  }
+  return { markdown, envelope: JSON.stringify(envelope) };
+}
+
+function nodeToolResult(text: string): ToolOut {
+  const { markdown, envelope } = nodeEnvelope(text);
   return {
     content: [
       { type: "text", text: markdown },
-      { type: "text", text: text || "{}" },
+      { type: "text", text: envelope },
     ],
   };
 }
 
-function createServer(deps: Deps): McpServer {
-  const server = new McpServer({ name: "projthread", version: "1.0.0" });
+function parseWrapJson(result: ToolOut): ToolOut | Record<string, unknown> {
+  if (result.isError) return result;
+  try {
+    return JSON.parse(result.content[0]?.text ?? "{}") as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return result;
+  }
+}
 
-  server.registerTool(
-    "me",
-    { description: "Current principal and workspace memberships", inputSchema: {} },
-    async () => wrap(deps, "/api/me"),
+async function loadMe(deps: Deps): Promise<ToolOut | MePayload> {
+  const parsed = parseWrapJson(await wrap(deps, "/api/me"));
+  if (isErrorOut(parsed)) return parsed;
+  const record = parsed as Record<string, unknown>;
+  const principal = record.principal as MePayload["principal"];
+  const memberships = (record.memberships as MePayload["memberships"]) ?? [];
+  return { principal, memberships };
+}
+
+async function workspaceId(
+  deps: Deps,
+  explicit?: string,
+): Promise<string | ToolOut> {
+  const me = await loadMe(deps);
+  if (isErrorOut(me)) return me;
+  const memberships = me.memberships;
+  if (explicit) {
+    if (!memberships.some((row) => row.workspace_id === explicit)) {
+      return errorResult({ ...WORKSPACE_REQUIRED });
+    }
+    return explicit;
+  }
+  if (memberships.length === 1) return memberships[0]!.workspace_id;
+  return errorResult({ ...WORKSPACE_REQUIRED });
+}
+
+function compactCard(item: {
+  id: string;
+  title: string;
+  stage_key: string;
+  project_id: string;
+  updated_at: string;
+}): CompactCard {
+  return {
+    id: item.id,
+    title: item.title,
+    stage_key: item.stage_key,
+    project_id: item.project_id,
+    updated_at: item.updated_at,
+  };
+}
+
+function capHits<T>(hits: T[]): { hits: T[]; truncated: boolean } {
+  const truncated = hits.length > HITS_CAP;
+  return { hits: hits.slice(0, HITS_CAP), truncated };
+}
+
+function substringMatch(haystack: string, query: string): boolean {
+  return haystack.toLowerCase().includes(query.toLowerCase());
+}
+
+async function listRootCards(
+  deps: Deps,
+  workspace: string,
+): Promise<ToolOut | { cards: CompactCard[]; truncated: boolean }> {
+  const projectsParsed = parseWrapJson(
+    await wrap(deps, `/api/workspaces/${workspace}/projects`),
   );
-
-  server.registerTool(
-    "list_projects",
-    {
-      description: "List projects in a workspace",
-      inputSchema: { workspace_id: z.string() },
-    },
-    async ({ workspace_id }) =>
-      wrap(deps, `/api/workspaces/${workspace_id}/projects`),
-  );
-
-  server.registerTool(
-    "list_stages",
-    {
-      description: "List kanban stages in a workspace",
-      inputSchema: { workspace_id: z.string() },
-    },
-    async ({ workspace_id }) =>
-      wrap(deps, `/api/workspaces/${workspace_id}/stages`),
-  );
-
-  server.registerTool(
-    "list_work_items",
-    {
-      description: "List cards under a project (includes descendants)",
-      inputSchema: {
-        workspace_id: z.string(),
-        project_id: z.string(),
-      },
-    },
-    async ({ workspace_id, project_id }) =>
-      wrap(
+  if (isErrorOut(projectsParsed)) return projectsParsed;
+  const projects = (projectsParsed.projects as {
+    id: string;
+    parent_id: string | null;
+  }[]) ?? [];
+  const roots = projects.filter((project) => project.parent_id === null);
+  const cards: CompactCard[] = [];
+  for (const root of roots) {
+    const listed = parseWrapJson(
+      await wrap(
         deps,
-        `/api/workspaces/${workspace_id}/work-items?project_id=${encodeURIComponent(project_id)}`,
+        `/api/workspaces/${workspace}/work-items?project_id=${encodeURIComponent(root.id)}`,
       ),
+    );
+    if (isErrorOut(listed)) return listed;
+    const items = (listed.work_items as CompactCard[]) ?? [];
+    for (const item of items) cards.push(compactCard(item));
+  }
+  const truncated = cards.length > HITS_CAP;
+  return { cards: cards.slice(0, HITS_CAP), truncated };
+}
+
+const READ = { readOnlyHint: true, idempotentHint: true } as const;
+const WRITE = { readOnlyHint: false } as const;
+
+function createServer(deps: Deps): McpServer {
+  const server = new McpServer(
+    { name: "projthread", version: "1.0.0" },
+    { instructions: MCP_INSTRUCTIONS },
   );
 
   server.registerTool(
-    "get_work_item",
+    "session_briefing",
     {
-      description: "Get one card by id",
-      inputSchema: { work_item_id: z.string() },
+      description:
+        "Tool to compile who you are and the workspace board (projects, stages, compact cards). Use at session start or when board context is missing. Do not use to read a wiki page or a single card (wiki_read / card_get). Side effects: none. If this principal has one membership, omit workspace_id.",
+      inputSchema: { workspace_id: z.string().optional() },
+      annotations: READ,
     },
-    async ({ work_item_id }) => wrap(deps, `/api/work-items/${work_item_id}`),
+    async ({ workspace_id }) => {
+      const me = await loadMe(deps);
+      if (isErrorOut(me)) return me;
+      if (!workspace_id && me.memberships.length !== 1) {
+        return jsonResult({
+          principal: me.principal,
+          memberships: me.memberships.map((row) => ({
+            workspace_id: row.workspace_id,
+            workspace_name: row.workspace_name,
+            role: row.role,
+          })),
+        });
+      }
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      const membership = me.memberships.find((row) => row.workspace_id === ws);
+      if (!membership) return errorResult({ ...WORKSPACE_REQUIRED });
+      const projectsParsed = parseWrapJson(
+        await wrap(deps, `/api/workspaces/${ws}/projects`),
+      );
+      if (isErrorOut(projectsParsed)) return projectsParsed;
+      const stagesParsed = parseWrapJson(
+        await wrap(deps, `/api/workspaces/${ws}/stages`),
+      );
+      if (isErrorOut(stagesParsed)) return stagesParsed;
+      const board = await listRootCards(deps, ws);
+      if (isErrorOut(board)) return board;
+      const projects = (
+        (projectsParsed.projects as {
+          id: string;
+          name: string;
+          parent_id: string | null;
+        }[]) ?? []
+      ).map((project) => ({
+        id: project.id,
+        name: project.name,
+        parent_id: project.parent_id,
+      }));
+      const stages = (
+        (stagesParsed.stages as {
+          key: string;
+          label: string;
+          position: number;
+        }[]) ?? []
+      ).map((stage) => ({
+        key: stage.key,
+        label: stage.label,
+        position: stage.position,
+      }));
+      return jsonResult({
+        principal: me.principal,
+        workspace: {
+          id: membership.workspace_id,
+          name: membership.workspace_name,
+          role: membership.role,
+        },
+        projects,
+        stages,
+        cards: board.cards,
+        truncated: board.truncated,
+      });
+    },
   );
 
   server.registerTool(
-    "create_work_item",
+    "wiki_search",
     {
-      description: "Create a card on a project (starts in backlog)",
+      description:
+        "Tool to search wiki nodes by title/summary substring. Use to find a page id. Do not use to read markdown (wiki_read) or list cards. Side effects: none. Hits only; no content.",
       inputSchema: {
-        workspace_id: z.string(),
-        project_id: z.string(),
-        title: z.string(),
+        query: z.string().min(1),
+        type: z.string().optional(),
+        workspace_id: z.string().optional(),
       },
+      annotations: READ,
     },
-    async ({ workspace_id, project_id, title }) =>
-      wrap(deps, `/api/workspaces/${workspace_id}/work-items`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ project_id, title }),
-      }),
+    async ({ query, type, workspace_id }) => {
+      if (!query) {
+        return errorResult({
+          error: "query_required",
+          hint: "wiki_search needs query; do not list the whole wiki.",
+        });
+      }
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      const listed = parseWrapJson(
+        await wrap(deps, `/api/workspaces/${ws}/nodes`),
+      );
+      if (isErrorOut(listed)) return listed;
+      const nodes = (listed.nodes as {
+        id: string;
+        title: string;
+        type: string;
+        summary: string | null;
+        updated_at: string;
+      }[]) ?? [];
+      const matched = nodes.filter((node) => {
+        if (type && node.type !== type) return false;
+        if (substringMatch(node.title, query)) return true;
+        if (node.summary && substringMatch(node.summary, query)) return true;
+        return false;
+      });
+      const { hits, truncated } = capHits(
+        matched.map((node) => ({
+          id: node.id,
+          title: node.title,
+          type: node.type,
+          summary: node.summary,
+          updated_at: node.updated_at,
+        })),
+      );
+      return jsonResult({ hits, truncated });
+    },
   );
 
   server.registerTool(
-    "update_work_item_title",
+    "wiki_read",
     {
-      description: "Rename a card",
-      inputSchema: {
-        work_item_id: z.string(),
-        title: z.string(),
-      },
-    },
-    async ({ work_item_id, title }) =>
-      wrap(deps, `/api/work-items/${work_item_id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title }),
-      }),
-  );
-
-  server.registerTool(
-    "move_work_item",
-    {
-      description: "Move a card between stages (writes Activity, may wake the room)",
-      inputSchema: {
-        work_item_id: z.string(),
-        from: z.string(),
-        to: z.string(),
-        body: z.string(),
-      },
-    },
-    async ({ work_item_id, from, to, body }) =>
-      wrap(deps, `/api/work-items/${work_item_id}/events`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "stage_changed", from, to, body }),
-      }),
-  );
-
-  server.registerTool(
-    "list_nodes",
-    {
-      description: "List wiki nodes in a workspace (no full content)",
-      inputSchema: { workspace_id: z.string() },
-    },
-    async ({ workspace_id }) =>
-      wrap(deps, `/api/workspaces/${workspace_id}/nodes`),
-  );
-
-  server.registerTool(
-    "get_node",
-    {
-      description: "Get a wiki node including markdown content",
+      description:
+        "Tool to read one wiki page. Use when you have a node_id from search or briefing. Do not use to search. Side effects: none. content[0] is markdown.",
       inputSchema: { node_id: z.string() },
+      annotations: READ,
     },
     async ({ node_id }) => wrap(deps, `/api/nodes/${node_id}`, {}, "node"),
   );
 
   server.registerTool(
-    "create_node",
+    "wiki_create",
     {
-      description: "Create a markdown wiki node",
+      description:
+        "Tool to create a wiki page. Use when no existing page should hold this. Do not use to patch (wiki_write) or to log a card decision (activity_log). Side effects: write.",
       inputSchema: {
-        workspace_id: z.string(),
         title: z.string(),
         type: z.string().optional(),
         summary: z.string().optional(),
         content: z.string().optional(),
         work_item_id: z.string().optional(),
+        workspace_id: z.string().optional(),
       },
+      annotations: WRITE,
     },
-    async ({ workspace_id, title, type, summary, content, work_item_id }) =>
-      wrap(
+    async ({ title, type, summary, content, work_item_id, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(
         deps,
-        `/api/workspaces/${workspace_id}/nodes`,
+        `/api/workspaces/${ws}/nodes`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: compactJson({ title, type, summary, content, work_item_id }),
         },
         "node",
-      ),
+      );
+    },
   );
 
   server.registerTool(
-    "update_node",
+    "wiki_write",
     {
-      description: "Patch a wiki node (title, type, summary, content)",
+      description:
+        "Tool to patch canonical wiki (title, type, summary, content). Use only after wiki_read on this node in this turn. Do not use to create. Side effects: write; overwrites the page.",
       inputSchema: {
         node_id: z.string(),
         title: z.string().optional(),
@@ -275,9 +453,21 @@ function createServer(deps: Deps): McpServer {
         summary: z.string().optional(),
         content: z.string().optional(),
       },
+      annotations: WRITE,
     },
-    async ({ node_id, title, type, summary, content }) =>
-      wrap(
+    async ({ node_id, title, type, summary, content }) => {
+      if (
+        title === undefined &&
+        type === undefined &&
+        summary === undefined &&
+        content === undefined
+      ) {
+        return errorResult({
+          error: "patch_required",
+          hint: "Pass at least one of title, type, summary, content.",
+        });
+      }
+      return wrap(
         deps,
         `/api/nodes/${node_id}`,
         {
@@ -286,36 +476,21 @@ function createServer(deps: Deps): McpServer {
           body: compactJson({ title, type, summary, content }),
         },
         "node",
-      ),
-  );
-
-  server.registerTool(
-    "attach_node_work_item",
-    {
-      description: "Link a wiki node to a card",
-      inputSchema: {
-        node_id: z.string(),
-        work_item_id: z.string(),
-      },
+      );
     },
-    async ({ node_id, work_item_id }) =>
-      wrap(deps, `/api/nodes/${node_id}/work-items`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ work_item_id }),
-      }),
   );
 
   server.registerTool(
     "compose_node",
     {
       description:
-        "Compose: include a wiki node as an ordered child (not a citation)",
+        "Tool to include a wiki node as an ordered child. Use for outline parts. Do not use to cite (cite_node) or attach a card. Side effects: write.",
       inputSchema: {
         node_id: z.string(),
         child_id: z.string(),
         position: z.number().int().optional(),
       },
+      annotations: WRITE,
     },
     async ({ node_id, child_id, position }) =>
       wrap(
@@ -333,11 +508,13 @@ function createServer(deps: Deps): McpServer {
   server.registerTool(
     "cite_node",
     {
-      description: "Cite another wiki node (not an include)",
+      description:
+        "Tool to cite another wiki node (ref, not include). Use for pointers. Do not use to nest outline children. Side effects: write.",
       inputSchema: {
         node_id: z.string(),
         to_id: z.string(),
       },
+      annotations: WRITE,
     },
     async ({ node_id, to_id }) =>
       wrap(
@@ -350,6 +527,248 @@ function createServer(deps: Deps): McpServer {
         },
         "node",
       ),
+  );
+
+  server.registerTool(
+    "attach_node_work_item",
+    {
+      description:
+        "Tool to link a wiki node to a card. Use when the page is about that work item. Do not use to compose or cite nodes. Side effects: write.",
+      inputSchema: {
+        node_id: z.string(),
+        work_item_id: z.string(),
+      },
+      annotations: WRITE,
+    },
+    async ({ node_id, work_item_id }) =>
+      wrap(deps, `/api/nodes/${node_id}/work-items`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ work_item_id }),
+      }),
+  );
+
+  server.registerTool(
+    "card_search",
+    {
+      description:
+        "Tool to find cards (id, title, stage, project). Use before create to avoid duplicates, or to pick an id. Do not use for wiki. Side effects: none.",
+      inputSchema: {
+        query: z.string().optional(),
+        project_id: z.string().optional(),
+        stage_key: z.string().optional(),
+        workspace_id: z.string().optional(),
+      },
+      annotations: READ,
+    },
+    async ({ query, project_id, stage_key, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      let cards: CompactCard[];
+      if (project_id) {
+        const listed = parseWrapJson(
+          await wrap(
+            deps,
+            `/api/workspaces/${ws}/work-items?project_id=${encodeURIComponent(project_id)}`,
+          ),
+        );
+        if (isErrorOut(listed)) return listed;
+        cards = ((listed.work_items as CompactCard[]) ?? []).map(compactCard);
+      } else {
+        const board = await listRootCards(deps, ws);
+        if (isErrorOut(board)) return board;
+        cards = board.cards;
+      }
+      const matched = cards.filter((card) => {
+        if (stage_key && card.stage_key !== stage_key) return false;
+        if (query && !substringMatch(card.title, query)) return false;
+        return true;
+      });
+      const { hits, truncated } = capHits(matched);
+      return jsonResult({ hits, truncated });
+    },
+  );
+
+  server.registerTool(
+    "card_get",
+    {
+      description:
+        "Tool to get one card plus last N Activity events. Use when working a known work_item_id. Do not use to list the board (session_briefing / card_search). Side effects: none.",
+      inputSchema: {
+        work_item_id: z.string(),
+        limit: z.number().int().min(1).max(20).optional(),
+      },
+      annotations: READ,
+    },
+    async ({ work_item_id, limit }) => {
+      const n = limit ?? 10;
+      const itemParsed = parseWrapJson(
+        await wrap(deps, `/api/work-items/${work_item_id}`),
+      );
+      if (isErrorOut(itemParsed)) return itemParsed;
+      const eventsParsed = parseWrapJson(
+        await wrap(deps, `/api/work-items/${work_item_id}/events`),
+      );
+      if (isErrorOut(eventsParsed)) return eventsParsed;
+      const events = (eventsParsed.events as unknown[]) ?? [];
+      return jsonResult({
+        card: compactCard(itemParsed as unknown as CompactCard),
+        events: events.slice(-n),
+      });
+    },
+  );
+
+  server.registerTool(
+    "card_create",
+    {
+      description:
+        "Tool to create a card on a project (starts in backlog). Use after card_search. If the same title already exists on that project, returns it and already_exists true. Side effects: write unless exists.",
+      inputSchema: {
+        project_id: z.string(),
+        title: z.string(),
+        workspace_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: true },
+    },
+    async ({ project_id, title, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      const listed = parseWrapJson(
+        await wrap(
+          deps,
+          `/api/workspaces/${ws}/work-items?project_id=${encodeURIComponent(project_id)}`,
+        ),
+      );
+      if (isErrorOut(listed)) return listed;
+      const items = (listed.work_items as CompactCard[]) ?? [];
+      const existing = items.find((item) => item.title === title);
+      if (existing) {
+        return jsonResult({
+          already_exists: true,
+          card: compactCard(existing),
+        });
+      }
+      const created = parseWrapJson(
+        await wrap(deps, `/api/workspaces/${ws}/work-items`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ project_id, title }),
+        }),
+      );
+      if (isErrorOut(created)) return created;
+      return jsonResult({
+        already_exists: false,
+        card: compactCard(created as unknown as CompactCard),
+      });
+    },
+  );
+
+  server.registerTool(
+    "card_rename",
+    {
+      description:
+        "Tool to retitle a card. Use when the work_item_id is known. Do not use to move stages (card_move). Side effects: write.",
+      inputSchema: {
+        work_item_id: z.string(),
+        title: z.string(),
+      },
+      annotations: WRITE,
+    },
+    async ({ work_item_id, title }) => {
+      const parsed = parseWrapJson(
+        await wrap(deps, `/api/work-items/${work_item_id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title }),
+        }),
+      );
+      if (isErrorOut(parsed)) return parsed;
+      return jsonResult({ card: compactCard(parsed as unknown as CompactCard) });
+    },
+  );
+
+  server.registerTool(
+    "card_move",
+    {
+      description:
+        "Tool to move a card between stages. Use when the stage should change; body is the required reason. Do not use to log a decision without a move (activity_log). Side effects: write; writes Activity; may wake the room.",
+      inputSchema: {
+        work_item_id: z.string(),
+        from: z.string(),
+        to: z.string(),
+        body: z.string(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    async ({ work_item_id, from, to, body }) => {
+      const parsed = parseWrapJson(
+        await wrap(deps, `/api/work-items/${work_item_id}/events`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "stage_changed", from, to, body }),
+        }),
+      );
+      if (isErrorOut(parsed)) return parsed;
+      const workItem = parsed.work_item as CompactCard | undefined;
+      return jsonResult({
+        event: parsed.event,
+        card: workItem ? compactCard(workItem) : workItem,
+      });
+    },
+  );
+
+  server.registerTool(
+    "activity_log",
+    {
+      description:
+        "Tool to append a typed Activity event (decision, occurrence, note). Use for working memory the next session must see. Do not use for stage changes (card_move) or wiki pages (wiki_write). Side effects: write; may wake the room.",
+      inputSchema: {
+        work_item_id: z.string(),
+        type: z.enum(["decision", "occurrence", "note"]),
+        body: z.string(),
+        ref_node_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    async ({ work_item_id, type, body, ref_node_id }) => {
+      const parsed = parseWrapJson(
+        await wrap(deps, `/api/work-items/${work_item_id}/events`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: compactJson({ type, body, ref_node_id }),
+        }),
+      );
+      if (isErrorOut(parsed)) return parsed;
+      const workItem = parsed.work_item as CompactCard | undefined;
+      return jsonResult({
+        event: parsed.event,
+        card: workItem ? compactCard(workItem) : workItem,
+      });
+    },
+  );
+
+  server.registerTool(
+    "activity_recent",
+    {
+      description:
+        "Tool to read recent Activity on a card (failed-approach precheck). Use before repeating an approach. Do not use to write. Side effects: none.",
+      inputSchema: {
+        work_item_id: z.string(),
+        limit: z.number().int().min(1).max(20).optional(),
+        type: z.enum(["decision", "occurrence", "note", "stage_changed"]).optional(),
+      },
+      annotations: READ,
+    },
+    async ({ work_item_id, limit, type }) => {
+      const n = limit ?? 10;
+      const parsed = parseWrapJson(
+        await wrap(deps, `/api/work-items/${work_item_id}/events`),
+      );
+      if (isErrorOut(parsed)) return parsed;
+      let events = (parsed.events as { type: string }[]) ?? [];
+      if (type) events = events.filter((event) => event.type === type);
+      return jsonResult({ events: events.slice(-n) });
+    },
   );
 
   return server;

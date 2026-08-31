@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { handleAdmin } from "./admin.ts";
 import {
+  DEFAULT_STAGES,
   type CatalogStore,
   type Membership,
+  type ProjectRow,
+  type StageRow,
   type TenantBundle,
+  type WorkItemEventRow,
+  type WorkItemRow,
+  type WorkspaceMemberRow,
 } from "./catalog.ts";
 import { COOKIE_NAME } from "../lib/cookies.ts";
 import type { Env } from "./env.ts";
@@ -17,36 +23,58 @@ import {
 import { memoryWikiStore, type WikiStore } from "./wiki.ts";
 
 const ORIGIN = "http://127.0.0.1:8787";
-const env = { APP_ORIGIN: ORIGIN } as Env;
+const env = {
+  APP_ORIGIN: ORIGIN,
+  Room: {
+    getByName() {
+      return {
+        fetch: async () => new Response(),
+        async appendSystem({ event_id }: { event_id: string }) {
+          return {
+            seq: 1,
+            kind: "activity" as const,
+            body: "",
+            actor_id: null,
+            event_id,
+            created_at: "2026-01-01T00:00:00.000Z",
+          };
+        },
+      };
+    },
+  },
+} as Env;
 
 const TOOL_NAMES = [
-  "me",
-  "list_projects",
-  "list_stages",
-  "list_work_items",
-  "get_work_item",
-  "create_work_item",
-  "update_work_item_title",
-  "move_work_item",
-  "list_nodes",
-  "get_node",
-  "create_node",
-  "update_node",
-  "attach_node_work_item",
+  "session_briefing",
+  "wiki_search",
+  "wiki_read",
+  "wiki_create",
+  "wiki_write",
   "compose_node",
   "cite_node",
+  "attach_node_work_item",
+  "card_search",
+  "card_get",
+  "card_create",
+  "card_rename",
+  "card_move",
+  "activity_log",
+  "activity_recent",
 ] as const;
 
-function unused(): never {
-  throw new Error("unused");
-}
-
-function memoryCatalog(
-  byPrincipal: Map<string, Membership[]> = new Map(),
-): CatalogStore {
+function memoryCatalog(): CatalogStore {
   const organizations = new Map<
     string,
     { id: string; name: string; created_at: string }
+  >();
+  const principals = new Map<
+    string,
+    {
+      id: string;
+      type: "human" | "agent" | "service";
+      display_name: string;
+      created_at: string;
+    }
   >();
   const workspaces = new Map<
     string,
@@ -56,62 +84,189 @@ function memoryCatalog(
     string,
     { workspace_id: string; principal_id: string; role: "owner" | "member" }
   >();
+  const stages = new Map<string, StageRow>();
+  const projects = new Map<string, ProjectRow & { created_at: string }>();
+  const workItems = new Map<string, WorkItemRow>();
+  const events = new Map<string, WorkItemEventRow>();
 
   function membershipKey(workspaceId: string, principalId: string): string {
     return `${workspaceId}:${principalId}`;
   }
 
+  function toMembership(
+    workspaceId: string,
+    principalId: string,
+  ): Membership | null {
+    const row = memberships.get(membershipKey(workspaceId, principalId));
+    if (!row) return null;
+    const workspace = workspaces.get(workspaceId);
+    if (!workspace) return null;
+    const organization = organizations.get(workspace.organization_id);
+    if (!organization) return null;
+    return {
+      organization_id: organization.id,
+      organization_name: organization.name,
+      workspace_id: workspace.id,
+      workspace_name: workspace.name,
+      role: row.role,
+    };
+  }
+
   return {
     async listMemberships(principalId) {
-      return [...(byPrincipal.get(principalId) ?? [])];
+      const out: Membership[] = [];
+      for (const row of memberships.values()) {
+        if (row.principal_id !== principalId) continue;
+        const m = toMembership(row.workspace_id, principalId);
+        if (m) out.push(m);
+      }
+      return out;
     },
     async getMembership(workspaceId, principalId) {
-      const row = memberships.get(membershipKey(workspaceId, principalId));
-      if (!row) return null;
-      const workspace = workspaces.get(workspaceId);
-      if (!workspace) return null;
-      const organization = organizations.get(workspace.organization_id);
-      if (!organization) return null;
-      return {
-        organization_id: organization.id,
-        organization_name: organization.name,
-        workspace_id: workspace.id,
-        workspace_name: workspace.name,
-        role: row.role,
-      };
+      return toMembership(workspaceId, principalId);
     },
-    listMembers: unused,
-    insertMembership: unused,
-    listProjects: unused,
-    getProject: unused,
-    insertProject: unused,
-    updateProjectName: unused,
-    listStages: unused,
-    replaceStages: unused,
-    listWorkItems: unused,
-    getWorkItem: unused,
-    insertWorkItem: unused,
-    updateWorkItemTitle: unused,
+    async listMembers(workspaceId) {
+      const out: WorkspaceMemberRow[] = [];
+      for (const row of memberships.values()) {
+        if (row.workspace_id !== workspaceId) continue;
+        const principal = principals.get(row.principal_id);
+        out.push({
+          workspace_id: row.workspace_id,
+          principal_id: row.principal_id,
+          display_name: principal?.display_name ?? "",
+          type: principal?.type ?? "human",
+          role: row.role,
+        });
+      }
+      return out;
+    },
+    async insertMembership(row) {
+      const key = membershipKey(row.workspace_id, row.principal_id);
+      if (memberships.has(key)) return "exists";
+      memberships.set(key, { ...row });
+      return "inserted";
+    },
+    async listProjects(workspaceId) {
+      return [...projects.values()]
+        .filter((p) => p.workspace_id === workspaceId)
+        .map(({ created_at: _createdAt, ...row }) => ({ ...row }));
+    },
+    async getProject(id) {
+      const row = projects.get(id);
+      return row ? { ...row } : null;
+    },
+    async insertProject(row) {
+      projects.set(row.id, { ...row });
+    },
+    async updateProjectName(id, name) {
+      const row = projects.get(id);
+      if (!row) return false;
+      projects.set(id, { ...row, name });
+      return true;
+    },
+    async listStages(workspaceId) {
+      return [...stages.values()]
+        .filter((s) => s.workspace_id === workspaceId)
+        .sort((a, b) => a.position - b.position)
+        .map((s) => ({ ...s }));
+    },
+    async replaceStages(workspaceId, next) {
+      const existing = [...stages.values()].filter(
+        (s) => s.workspace_id === workspaceId,
+      );
+      const existingKeys = new Set(existing.map((s) => s.key));
+      const incomingKeys = new Set(next.map((s) => s.key));
+      if (
+        existingKeys.size !== incomingKeys.size ||
+        [...existingKeys].some((key) => !incomingKeys.has(key))
+      ) {
+        return false;
+      }
+      for (const stage of next) {
+        stages.set(`${workspaceId}:${stage.key}`, { ...stage });
+      }
+      return true;
+    },
+    async listWorkItems(workspaceId, projectIds) {
+      if (projectIds.length === 0) return [];
+      const allowed = new Set(projectIds);
+      return [...workItems.values()]
+        .filter(
+          (item) =>
+            item.workspace_id === workspaceId && allowed.has(item.project_id),
+        )
+        .map((item) => ({ ...item }));
+    },
+    async getWorkItem(id) {
+      const row = workItems.get(id);
+      return row ? { ...row } : null;
+    },
+    async insertWorkItem(row) {
+      workItems.set(row.id, { ...row });
+    },
+    async updateWorkItemTitle(id, title, updatedAt) {
+      const row = workItems.get(id);
+      if (!row) return false;
+      workItems.set(id, { ...row, title, updated_at: updatedAt });
+      return true;
+    },
     async insertTenantBundle(b) {
       organizations.set(b.organization.id, { ...b.organization });
+      principals.set(b.principal.id, { ...b.principal });
       workspaces.set(b.workspace.id, { ...b.workspace });
+      for (const stage of DEFAULT_STAGES) {
+        const row: StageRow = {
+          workspace_id: b.workspace.id,
+          key: stage.key,
+          label: stage.label,
+          position: stage.position,
+        };
+        stages.set(`${row.workspace_id}:${row.key}`, row);
+      }
+      projects.set(b.project.id, { ...b.project });
       memberships.set(
         membershipKey(b.membership.workspace_id, b.membership.principal_id),
-        { ...b.membership },
+        {
+          ...b.membership,
+        },
       );
-      const row: Membership = {
-        organization_id: b.organization.id,
-        organization_name: b.organization.name,
-        workspace_id: b.workspace.id,
-        workspace_name: b.workspace.name,
-        role: b.membership.role,
-      };
-      const existing = byPrincipal.get(b.membership.principal_id) ?? [];
-      byPrincipal.set(b.membership.principal_id, [...existing, row]);
     },
-    listOrganizations: unused,
-    listWorkItemEvents: unused,
-    commitWorkItemEvent: unused,
+    async listOrganizations() {
+      return [...organizations.values()].map((o) => ({
+        id: o.id,
+        name: o.name,
+      }));
+    },
+    async listWorkItemEvents(workItemId) {
+      return [...events.values()]
+        .filter((row) => row.work_item_id === workItemId)
+        .sort((a, b) => {
+          if (a.created_at < b.created_at) return -1;
+          if (a.created_at > b.created_at) return 1;
+          if (a.id < b.id) return -1;
+          if (a.id > b.id) return 1;
+          return 0;
+        })
+        .map((row) => ({ ...row }));
+    },
+    async commitWorkItemEvent(commit) {
+      events.set(commit.event.id, { ...commit.event });
+      const item = workItems.get(commit.event.work_item_id);
+      if (!item) return;
+      if (commit.stage_key === undefined && commit.owner_id === undefined) {
+        return;
+      }
+      workItems.set(commit.event.work_item_id, {
+        ...item,
+        ...(commit.stage_key !== undefined
+          ? { stage_key: commit.stage_key }
+          : {}),
+        ...(commit.owner_id !== undefined ? { owner_id: commit.owner_id } : {}),
+        ...(commit.updated_at !== undefined
+          ? { updated_at: commit.updated_at }
+          : {}),
+      });
+    },
   };
 }
 
@@ -280,6 +435,35 @@ function postMcp(
   });
 }
 
+function callTool(
+  sessionId: string,
+  name: string,
+  args: Record<string, unknown>,
+) {
+  return postMcp(
+    { authorization: `Bearer ${sessionId}` },
+    "tools/call",
+    { name, arguments: args },
+    name,
+  );
+}
+
+async function toolResult(
+  res: Response,
+): Promise<{
+  isError?: boolean;
+  content: { type: string; text: string }[];
+}> {
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as {
+    result?: { content?: { type: string; text: string }[]; isError?: boolean };
+  };
+  return {
+    isError: body.result?.isError,
+    content: body.result?.content ?? [],
+  };
+}
+
 describe("handleMcp", () => {
   it("returns 401 without Authorization", async () => {
     const res = await handleMcp(
@@ -354,7 +538,7 @@ describe("handleMcp", () => {
     );
   });
 
-  it("tools/list names the catalog wrap", async () => {
+  it("tools/list names the façade", async () => {
     const { sessionId, sessions, catalog, wiki } = await memberContext();
     const res = await handleMcp(
       postMcp({ authorization: `Bearer ${sessionId}` }, "tools/list"),
@@ -371,150 +555,80 @@ describe("handleMcp", () => {
     assert.deepEqual(names, [...TOOL_NAMES].sort());
   });
 
-  it("tools/call me returns the principal", async () => {
-    const { sessionId, sessions, catalog, wiki, principal } =
-      await memberContext();
-    const res = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        { name: "me", arguments: {} },
-        "me",
-      ),
-      env,
-      sessions,
-      catalog,
-      wiki,
-    );
-    assert.equal(res.status, 200);
-    const body = (await res.json()) as {
-      result?: { content?: { type: string; text: string }[]; isError?: boolean };
-    };
-    assert.equal(body.result?.isError, undefined);
-    const payload = JSON.parse(body.result?.content?.[0]?.text ?? "{}") as {
-      principal: Principal;
-    };
-    assert.equal(payload.principal.id, principal.id);
-    assert.equal(payload.principal.display_name, "Grok Bot");
-  });
-
-  it("tools/call create_node writes a wiki node", async () => {
+  it("tools/call wiki_create writes a wiki node", async () => {
     const { sessionId, sessions, catalog, wiki, bundle } =
       await memberContext();
-    const res = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        {
-          name: "create_node",
-          arguments: {
-            workspace_id: bundle.workspace.id,
-            title: "Feed schedule",
-            type: "note",
-            content: "Twice daily.",
-          },
-        },
-        "create_node",
-      ),
-      env,
-      sessions,
-      catalog,
-      wiki,
-    );
-    assert.equal(res.status, 200);
-    const body = (await res.json()) as {
-      result?: { content?: { type: string; text: string }[]; isError?: boolean };
-    };
-    assert.notEqual(body.result?.isError, true);
-    assert.equal(body.result?.content?.[0]?.text, "Twice daily.");
-    const payload = JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
-      node: { title: string; workspace_id: string; content: string };
-    };
-    assert.equal(payload.node.title, "Feed schedule");
-    assert.equal(payload.node.workspace_id, bundle.workspace.id);
-    assert.equal(payload.node.content, "Twice daily.");
-  });
-
-  it("create_node content[0] is unescaped markdown", async () => {
-    const markdown = 'Hay twice.\n\nSay "ready".';
-    const { sessionId, sessions, catalog, wiki, bundle } =
-      await memberContext();
-    const res = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        {
-          name: "create_node",
-          arguments: {
-            workspace_id: bundle.workspace.id,
-            title: "Feed",
-            content: markdown,
-          },
-        },
-        "create_node",
-      ),
-      env,
-      sessions,
-      catalog,
-      wiki,
-    );
-    assert.equal(res.status, 200);
-    const body = (await res.json()) as {
-      result?: { content?: { type: string; text: string }[]; isError?: boolean };
-    };
-    assert.notEqual(body.result?.isError, true);
-    assert.equal(body.result?.content?.[0]?.text, markdown);
-    assert.equal(body.result?.content?.[0]?.text.includes("\\n"), false);
-    const stored = JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
-      node: { id: string; content: string };
-    };
-    assert.equal(stored.node.content, markdown);
-    const got = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        { name: "get_node", arguments: { node_id: stored.node.id } },
-        "get_node",
-      ),
-      env,
-      sessions,
-      catalog,
-      wiki,
-    );
-    const gotBody = (await got.json()) as {
-      result?: { content?: { type: string; text: string }[] };
-    };
-    assert.equal(gotBody.result?.content?.[0]?.text, markdown);
-  });
-
-  it("compose_node includes without citing; cite_node cites without including", async () => {
-    const { sessionId, sessions, catalog, wiki, bundle } =
-      await memberContext();
-
-    async function create(title: string, content: string) {
-      const res = await handleMcp(
-        postMcp(
-          { authorization: `Bearer ${sessionId}` },
-          "tools/call",
-          {
-            name: "create_node",
-            arguments: {
-              workspace_id: bundle.workspace.id,
-              title,
-              content,
-            },
-          },
-          "create_node",
-        ),
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_create", {
+          title: "Feed schedule",
+          type: "note",
+          content: "Twice daily.",
+        }),
         env,
         sessions,
         catalog,
         wiki,
+      ),
+    );
+    assert.notEqual(result.isError, true);
+    assert.equal(result.content[0]?.text, "Twice daily.");
+    const payload = JSON.parse(result.content[1]?.text ?? "{}") as {
+      node: { title: string; workspace_id: string; content?: string };
+    };
+    assert.equal(payload.node.title, "Feed schedule");
+    assert.equal(payload.node.workspace_id, bundle.workspace.id);
+    assert.equal(payload.node.content, undefined);
+  });
+
+  it("wiki_create content[0] is unescaped markdown", async () => {
+    const markdown = 'Hay twice.\n\nSay "ready".';
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+    const created = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_create", {
+          title: "Feed",
+          content: markdown,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(created.isError, true);
+    assert.equal(created.content[0]?.text, markdown);
+    assert.equal(created.content[0]?.text.includes("\\n"), false);
+    const stored = JSON.parse(created.content[1]?.text ?? "{}") as {
+      node: { id: string; content?: string };
+    };
+    assert.equal(stored.node.content, undefined);
+    const got = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_read", { node_id: stored.node.id }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(got.content[0]?.text, markdown);
+  });
+
+  it("compose_node includes without citing; cite_node cites without including", async () => {
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+
+    async function create(title: string, content: string) {
+      const result = await toolResult(
+        await handleMcp(
+          callTool(sessionId, "wiki_create", { title, content }),
+          env,
+          sessions,
+          catalog,
+          wiki,
+        ),
       );
-      const body = (await res.json()) as {
-        result?: { content?: { text: string }[] };
-      };
-      return JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
+      return JSON.parse(result.content[1]?.text ?? "{}") as {
         node: { id: string };
       };
     }
@@ -523,61 +637,41 @@ describe("handleMcp", () => {
     const child = await create("Requirements", "Child body");
     const other = await create("Other plan", "Cite me");
 
-    const composed = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        {
-          name: "compose_node",
-          arguments: {
-            node_id: parent.node.id,
-            child_id: child.node.id,
-          },
-        },
-        "compose_node",
+    const composed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "compose_node", {
+          node_id: parent.node.id,
+          child_id: child.node.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
       ),
-      env,
-      sessions,
-      catalog,
-      wiki,
     );
-    assert.equal(composed.status, 200);
-    const composedBody = (await composed.json()) as {
-      result?: { content?: { text: string }[]; isError?: boolean };
-    };
-    assert.notEqual(composedBody.result?.isError, true);
-    assert.equal(composedBody.result?.content?.[0]?.text, "Parent body");
-    const composedPayload = JSON.parse(
-      composedBody.result?.content?.[1]?.text ?? "{}",
-    ) as {
+    assert.notEqual(composed.isError, true);
+    assert.equal(composed.content[0]?.text, "Parent body");
+    const composedPayload = JSON.parse(composed.content[1]?.text ?? "{}") as {
       includes: { id: string }[];
       refs: { id: string }[];
     };
     assert.equal(composedPayload.includes[0]?.id, child.node.id);
     assert.equal(composedPayload.refs.length, 0);
 
-    const cited = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        {
-          name: "cite_node",
-          arguments: { node_id: parent.node.id, to_id: other.node.id },
-        },
-        "cite_node",
+    const cited = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "cite_node", {
+          node_id: parent.node.id,
+          to_id: other.node.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
       ),
-      env,
-      sessions,
-      catalog,
-      wiki,
     );
-    const citedBody = (await cited.json()) as {
-      result?: { content?: { text: string }[]; isError?: boolean };
-    };
-    assert.notEqual(citedBody.result?.isError, true);
-    const citedPayload = JSON.parse(
-      citedBody.result?.content?.[1]?.text ?? "{}",
-    ) as {
+    assert.notEqual(cited.isError, true);
+    const citedPayload = JSON.parse(cited.content[1]?.text ?? "{}") as {
       includes: { id: string }[];
       refs: { id: string }[];
     };
@@ -587,29 +681,19 @@ describe("handleMcp", () => {
   });
 
   it("compose_node cycle is isError", async () => {
-    const { sessionId, sessions, catalog, wiki, bundle } =
-      await memberContext();
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
 
     async function create(title: string) {
-      const res = await handleMcp(
-        postMcp(
-          { authorization: `Bearer ${sessionId}` },
-          "tools/call",
-          {
-            name: "create_node",
-            arguments: { workspace_id: bundle.workspace.id, title },
-          },
-          "create_node",
+      const result = await toolResult(
+        await handleMcp(
+          callTool(sessionId, "wiki_create", { title }),
+          env,
+          sessions,
+          catalog,
+          wiki,
         ),
-        env,
-        sessions,
-        catalog,
-        wiki,
       );
-      const body = (await res.json()) as {
-        result?: { content?: { text: string }[] };
-      };
-      return JSON.parse(body.result?.content?.[1]?.text ?? "{}") as {
+      return JSON.parse(result.content[1]?.text ?? "{}") as {
         node: { id: string };
       };
     }
@@ -617,38 +701,262 @@ describe("handleMcp", () => {
     const a = await create("A");
     const b = await create("B");
     await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        {
-          name: "compose_node",
-          arguments: { node_id: a.node.id, child_id: b.node.id },
-        },
-        "compose_node",
-      ),
+      callTool(sessionId, "compose_node", {
+        node_id: a.node.id,
+        child_id: b.node.id,
+      }),
       env,
       sessions,
       catalog,
       wiki,
     );
-    const cycle = await handleMcp(
-      postMcp(
-        { authorization: `Bearer ${sessionId}` },
-        "tools/call",
-        {
-          name: "compose_node",
-          arguments: { node_id: b.node.id, child_id: a.node.id },
-        },
-        "compose_node",
+    const cycle = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "compose_node", {
+          node_id: b.node.id,
+          child_id: a.node.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
       ),
-      env,
-      sessions,
-      catalog,
-      wiki,
     );
-    const cycleBody = (await cycle.json()) as {
-      result?: { isError?: boolean };
+    assert.equal(cycle.isError, true);
+  });
+
+  it("session_briefing without workspace_id uses the sole membership", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle, principal } =
+      await memberContext();
+    await catalog.insertWorkItem({
+      id: "wi-1",
+      project_id: bundle.project.id,
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      title: "Collect eggs",
+      stage_key: "doing",
+      owner_id: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "session_briefing", {}),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      principal: { id: string };
+      workspace: { id: string };
+      cards: { id: string; title: string; stage_key: string }[];
+      memberships?: unknown;
     };
-    assert.equal(cycleBody.result?.isError, true);
+    assert.equal(payload.principal.id, principal.id);
+    assert.equal(payload.workspace.id, bundle.workspace.id);
+    assert.equal(payload.memberships, undefined);
+    assert.equal(payload.cards[0]?.title, "Collect eggs");
+    assert.equal(payload.cards[0]?.stage_key, "doing");
+  });
+
+  it("session_briefing with two memberships lists them until workspace_id is passed", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle, principal } =
+      await memberContext();
+    await catalog.insertTenantBundle({
+      organization: {
+        id: "org-consult",
+        name: "Consultoria",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      workspace: {
+        id: "ws-consult",
+        organization_id: "org-consult",
+        name: "Consultoria",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      project: {
+        id: "proj-consult",
+        workspace_id: "ws-consult",
+        organization_id: "org-consult",
+        parent_id: null,
+        name: "Consultoria",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      principal: {
+        id: principal.id,
+        type: "agent",
+        display_name: principal.display_name,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      membership: {
+        workspace_id: "ws-consult",
+        principal_id: principal.id,
+        role: "member",
+      },
+    });
+    const listed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "session_briefing", {}),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const listedPayload = JSON.parse(listed.content[0]?.text ?? "{}") as {
+      memberships: { workspace_id: string }[];
+      cards?: unknown;
+    };
+    assert.equal(listedPayload.memberships.length, 2);
+    assert.equal(listedPayload.cards, undefined);
+
+    const wikiFail = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_search", { query: "feed" }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(wikiFail.isError, true);
+    assert.match(wikiFail.content[0]?.text ?? "", /workspace_required/);
+
+    const farm = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "session_briefing", {
+          workspace_id: bundle.workspace.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const farmPayload = JSON.parse(farm.content[0]?.text ?? "{}") as {
+      workspace: { id: string };
+    };
+    assert.equal(farmPayload.workspace.id, bundle.workspace.id);
+  });
+
+  it("wiki_search returns hits without content", async () => {
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+    await handleMcp(
+      callTool(sessionId, "wiki_create", {
+        title: "Feed schedule",
+        content: "Twice daily. Secret ration.",
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_search", { query: "feed" }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      hits: { title: string; content?: string }[];
+    };
+    assert.equal(payload.hits[0]?.title, "Feed schedule");
+    assert.equal(payload.hits[0]?.content, undefined);
+    assert.equal(result.content[0]?.text.includes("Secret ration"), false);
+  });
+
+  it("card_create is idempotent on title in the same project", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } = await memberContext();
+    const first = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "card_create", {
+          project_id: bundle.project.id,
+          title: "Collect eggs",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const firstPayload = JSON.parse(first.content[0]?.text ?? "{}") as {
+      already_exists: boolean;
+      card: { id: string; title: string };
+    };
+    assert.equal(firstPayload.already_exists, false);
+    const second = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "card_create", {
+          project_id: bundle.project.id,
+          title: "Collect eggs",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const secondPayload = JSON.parse(second.content[0]?.text ?? "{}") as {
+      already_exists: boolean;
+      card: { id: string };
+    };
+    assert.equal(secondPayload.already_exists, true);
+    assert.equal(secondPayload.card.id, firstPayload.card.id);
+  });
+
+  it("activity_log then activity_recent round-trips a decision", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } = await memberContext();
+    const created = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "card_create", {
+          project_id: bundle.project.id,
+          title: "Nest boxes",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const card = JSON.parse(created.content[0]?.text ?? "{}") as {
+      card: { id: string };
+    };
+    const logged = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "activity_log", {
+          work_item_id: card.card.id,
+          type: "decision",
+          body: "Rejected hourly collection; twice daily stays.",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(logged.isError, true);
+    const recent = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "activity_recent", {
+          work_item_id: card.card.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const payload = JSON.parse(recent.content[0]?.text ?? "{}") as {
+      events: { type: string; body: string }[];
+    };
+    assert.equal(payload.events.at(-1)?.type, "decision");
+    assert.match(payload.events.at(-1)?.body ?? "", /twice daily/i);
   });
 });

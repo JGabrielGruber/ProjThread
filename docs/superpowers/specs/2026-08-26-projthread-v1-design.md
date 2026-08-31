@@ -69,25 +69,45 @@ Workspace ≠ Project. Product name ≠ the Project entity. In dotproj, Category
 
 ## Client
 
-**Vue 3 + Pinia** (or equivalent tiny stores). José’s **discipline** from `dotproj/pwa/src/pages/home/index.jsx`, translated:
+**Vue 3 + Pinia.** José’s **discipline** from `dotproj/pwa/src/pages/home/index.jsx`, translated:
 
 - Store is client SoR. Single-flight (`if (loading) return`).
 - Skeleton only when the list is empty; refetch does not blank the board.
 - Async work has `showStatus` / `showError` (slugs). Never silent failure.
 - ETag / skip apply if unchanged.
-- URL holds selection (`item`, project, `q`).
-- Lazy routes: room, wiki, config.
+- **vue-router owns surfaces** (kanban, wiki, config, room). Selection ids live in the route (path or query). The dummy `/` route that renders nothing is not the destination.
+- Lazy pages: room, wiki, config.
 - Debounce search. No poll. No WS frame per keystroke.
 
-| Surface | Kit |
-| --- | --- |
-| Kanban, room, wiki | **Our Vue.** Tokenized Grok/X/SpaceX-sharp (dark-first, high contrast, dense). Wiki **read** is long-form (phone-calm Markdown), not kanban density. **No hex in components** — semantic CSS variables (`--bg`, `--fg`, `--muted`, `--accent`, `--danger`, `--radius`, `--font`). Light is a second token set. |
-| PWA config (projects, members, stages) | **Our Vue + tokens.** **List + dialog**, not DataGrid. PrimeVue is out (v5 is not OSS). |
-| Super-admin `/admin` | **Our Vue + tokens.** Access. Enter as / Issue token, orgs, principals. |
+**Grow the tree** (today it is four fat views next to `App.vue` plus stores). Destination:
 
-No PrimeVue on any surface. Config and admin use the same tokenized controls as the product screens.
+| Path | Job |
+| --- | --- |
+| `src/app/pages/` | One page per surface |
+| `src/app/components/` | Shared primitives: dialog, toast, button, field, list row. **Our Vue.** Extract from screens that already exist. |
+| `src/app/stores/` | Pinia, still client SoR |
+| `src/app/models/` | Domain types (card, node, membership, …). Not an ORM. |
+| `src/app/services/` | HTTP only. Views do not `fetch`. |
+| `src/app/router.ts` | Real routes |
+
+No new UI npm kit. No PrimeVue, Daisy, Nord. Tokens stay CSS variables (`--bg`, `--fg`, `--muted`, `--accent`, `--danger`, `--radius`, `--font`). List + dialog, not DataGrid. Wiki **read** stays long-form (phone-calm Markdown). Config and admin use the same primitives as kanban / room / wiki.
+
+The product must be **operable**: a human (and later the Bot via Config MCP) can do the catalog/wiki CRUD the workspace needs. Plan 6 shipped a *minimum* Config. That minimum is not the vision. Structure lands **before** filling CRUD so those screens are not rewritten. Empty-tenant / drop Farm seed wait until a workspace can be created and kept. **Do not** start a vacuum design-system slice with unused variants.
 
 First load may be fat. After boot, smooth on a phone and on 180 Hz.
+
+## PWA product (remaining v1)
+
+Order (each a plan STATUS names; do not start the next until it does):
+
+1. **Structure** — routes, pages, components, models, services; extract primitives from current screens; **no new product CRUD**.
+2. **Operator CRUD** — Config completeness (remove member, PATCH role; project reparent; project archive/delete if HTTP is added; owner picker — `owner_changed` already exists). Card archive/delete only with HTTP. Wiki: outline/cites and attach chrome (HTTP exists); node delete only with HTTP. Workspace create in the PWA (today only `POST /api/admin/organizations`). Stage **keys** stay the minted `backlog` / `doing` / `done` unless a later spec opens add/delete keys. Labels/order already edit.
+3. **Empty tenant** — create a workspace the operator will keep, then drop Farm seed / remote D1 is ops. Not before (2) can create that workspace.
+4. **Config MCP** — Bot members/projects/stages. After human setup.
+
+**Ops (not plans):** deploy briefing pins + remote `0006`; reset Grok Bot memory; custom-domain Deploy stays parked until a domain exists.
+
+Named absences stay closed (OAuth, room MCP, child rooms, Vectorize, R2, Chores, PrimeVue, …).
 
 ## Auth
 
@@ -228,7 +248,7 @@ Worker catalog handlers stay inside **10 ms CPU** (Free). Room work is the DO (3
 | --- | --- |
 | `src/worker` | Routing, Access, session, D1 catalog, WS upgrade |
 | `src/room` | Durable Object class |
-| `src/app` | PWA (kanban, room, wiki, config) |
+| `src/app` | PWA — grow to `pages/`, `components/`, `stores/`, `models/`, `services/` |
 | `src/admin` | Super-admin SPA |
 | `src/lib` | Shared types, token names, API contracts |
 | `migrations/` | D1 SQL |
@@ -275,7 +295,7 @@ Plan 14 shipped:
 
 - `node.pinned` (`0` \| `1`). Human toggles in PWA wiki. Cap 10 on `session_briefing` as `{ id, title, type, summary }` (no bodies).
 - Cold bot: briefing, then `wiki_read` the pins. Do not encode workspace process in a Grok skill.
-- Config MCP, empty-tenant, and dropping Farm D1 stay later.
+- Config MCP, empty-tenant, and dropping Farm D1 stay later (see **PWA product**). PWA outline/attachment chrome waits on operator CRUD, after structure.
 
 ## Parked: node edges
 

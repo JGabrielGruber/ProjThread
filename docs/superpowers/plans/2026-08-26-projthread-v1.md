@@ -20,5 +20,15 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **11. Catalog MCP** | `2026-08-28-projthread-catalog-mcp.md` | Same-origin `/mcp`; Bearer session; wrap catalog/wiki HTTP; no room, no OAuth |
 | **12. Catalog MCP harden** | `2026-08-28-projthread-catalog-mcp-harden.md` | Node tools: raw markdown in `content[0]`; `compose_node` + `cite_node`; no room, no OAuth |
 | **13. MCP façade** | `2026-08-31-projthread-mcp-facade.md` | Intent tools: briefing, search/read, Activity, implicit workspace; no room, no OAuth |
+| **14. Briefing pins** | `2026-08-31-projthread-briefing-pins.md` | Wiki pins on `session_briefing`; process lives on those nodes; no Config MCP |
+| **15. Workspace setup** | *(not written)* | Empty tenant via admin/config so Farm seed can go; Bot Config MCP after |
 
-**Now:** plan 13 landed. Park plan 8 until a custom domain exists. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP.
+**Now:** execute plan 14. Do not write plan 15 until 14 lands. Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP.
+
+**Later (named, no plan file yet):**
+
+| Work | When |
+| --- | --- |
+| Config MCP (Bot can members/projects/stages) | After human workspace-setup |
+| Drop Farm seed / remote D1 | Ops, after setup exists |
+| Reset Grok Bot memory | Ops, anytime |

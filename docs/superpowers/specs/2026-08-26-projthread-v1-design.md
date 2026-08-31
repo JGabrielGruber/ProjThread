@@ -266,8 +266,16 @@ Plan 11 shipped a **thin adapter**. Plan 12 hardened markdown + compose/cite. Pl
 - Tools are intents: `session_briefing`, `wiki_search` / `wiki_read` / `wiki_create` / `wiki_write`, `compose_node` / `cite_node` / `attach_node_work_item`, `card_search` / `card_get` / `card_create` / `card_rename` / `card_move`, `activity_log` / `activity_recent`. They still wrap catalog + wiki HTTP. Wrap names (`me`, `list_*`, `get_work_item`, `get_node`, …) are gone. Room / WS stay out.
 - Node tools that return a page: `content[0].text` is raw markdown; envelope JSON in `content[1]` does not repeat `node.content`.
 - `compose_node` wraps `POST .../includes`; `cite_node` wraps `POST .../refs`. Attach stays `attach_node_work_item`.
-- Process skill: `docs/agent-facing.md` plus MCP `instructions`.
+- Process skill: `.grok/skills/using-projthread/SKILL.md` (ontology only) plus MCP `instructions`. How-we-work lives on **pinned wiki nodes** (plan 14). Implementers: `docs/agent-facing.md`.
 - OAuth, KV, `McpAgent`, a distinct agent-token table, and room MCP stay absences.
+
+## Parked: briefing pins
+
+Plan 14 (`2026-08-31-projthread-briefing-pins.md`) is the execute path:
+
+- `node.pinned` (`0` \| `1`). Human toggles in PWA wiki. Cap 10 on `session_briefing` as `{ id, title, type, summary }` (no bodies).
+- Cold bot: briefing, then `wiki_read` the pins. Do not encode workspace process in a Grok skill.
+- Config MCP, empty-tenant, and dropping Farm D1 stay later.
 
 ## Parked: node edges
 

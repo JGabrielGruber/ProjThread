@@ -463,6 +463,55 @@ describe("handleWiki", () => {
     assert.equal(body.node.content, "# Ho");
   });
 
+  it("PATCH pinned true is 200; outsider 403; pin-only body is enough", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg", content: "# Hi" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+
+    const outsiderSessions = memoryStore();
+    const outsider = await mintCookie(outsiderSessions);
+    const forbidden = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie: outsider.cookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ pinned: true }),
+      }),
+      env,
+      outsiderSessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(forbidden.status, 403);
+
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ pinned: true }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { node: { pinned: number } };
+    assert.equal(body.node.pinned, 1);
+  });
+
   it("POST with same-workspace work_item_id links it", async () => {
     const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
     catalog.seedWorkItem(farmWorkItem(bundle, "wi-1"));
@@ -831,6 +880,7 @@ describe("handleWiki", () => {
       filename: null,
       created_at: "2026-01-02T00:00:00.000Z",
       updated_at: "2026-01-02T00:00:00.000Z",
+      pinned: 0,
     });
 
     const res = await handleWiki(

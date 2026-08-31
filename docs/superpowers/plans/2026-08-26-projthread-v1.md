@@ -23,7 +23,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **14. Briefing pins** | `2026-08-31-projthread-briefing-pins.md` | Wiki pins on `session_briefing`; process lives on those nodes; no Config MCP |
 | **15. Workspace setup** | *(not written)* | Empty tenant via admin/config so Farm seed can go; Bot Config MCP after |
 
-**Now:** execute plan 14. Do not write plan 15 until 14 lands. Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP.
+**Now:** plan 14 landed. Next named work is **workspace setup** (plan 15 not written). Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until setup is named in STATUS.
 
 **Later (named, no plan file yet):**
 

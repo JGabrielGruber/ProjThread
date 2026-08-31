@@ -33,6 +33,7 @@ describe("wiki store", () => {
             summary: null,
             created_at: "2026-01-01T00:00:00.000Z",
             updated_at: "2026-01-01T00:00:00.000Z",
+            pinned: 0,
           },
         ],
       });
@@ -186,5 +187,57 @@ describe("wiki store", () => {
     assert.equal(posts.length, 1);
     assert.equal(posts[0]?.url, "/api/nodes/n1/work-items");
     assert.deepEqual(posts[0]?.body, { work_item_id: "wi-1" });
+  });
+
+  it("setPinned PATCHes { pinned } and updates the list row", async () => {
+    const patches: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/workspaces/ws1/nodes" && method === "GET") {
+        return Response.json({
+          nodes: [
+            {
+              id: "n1",
+              workspace_id: "ws1",
+              type: "note",
+              payload_kind: "markdown",
+              title: "Egg",
+              summary: null,
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              pinned: 0,
+            },
+          ],
+        });
+      }
+      if (url === "/api/nodes/n1" && method === "PATCH") {
+        patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return Response.json({
+          node: {
+            id: "n1",
+            workspace_id: "ws1",
+            organization_id: "o1",
+            type: "note",
+            payload_kind: "markdown",
+            title: "Egg",
+            summary: null,
+            content: "# Hi",
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-02T00:00:00.000Z",
+            pinned: 1,
+          },
+          work_item_ids: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useWikiStore();
+    await store.loadList("ws1");
+    await store.setPinned("n1", true);
+    assert.equal(patches.length, 1);
+    assert.equal(patches[0]?.url, "/api/nodes/n1");
+    assert.deepEqual(patches[0]?.body, { pinned: true });
+    assert.equal(store.nodes[0]?.pinned, 1);
   });
 });

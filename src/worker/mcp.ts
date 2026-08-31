@@ -26,7 +26,7 @@ const MCP_OPTIONS = {
   legacy: "stateless" as const,
 };
 
-const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory (decision, occurrence, note), not a second wiki. Start with session_briefing. Search then read (wiki_search → wiki_read, card_search → card_get). File cards with card_create after search; log decisions with activity_log. wiki_write only after wiki_read this turn. One membership: omit workspace_id.`;
+const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory. Start with session_briefing; wiki_read the pins — that is how this workspace works. Then search. One membership: omit workspace_id.`;
 
 const HITS_CAP = 50;
 
@@ -280,7 +280,7 @@ function createServer(deps: Deps): McpServer {
     "session_briefing",
     {
       description:
-        "Tool to compile who you are and the workspace board (projects, stages, compact cards). Use at session start or when board context is missing. Do not use to read a wiki page or a single card (wiki_read / card_get). Side effects: none. If this principal has one membership, omit workspace_id.",
+        "Tool to compile who you are and the workspace board (projects, stages, compact cards). Side effects: none.",
       inputSchema: { workspace_id: z.string().optional() },
       annotations: READ,
     },
@@ -311,6 +311,35 @@ function createServer(deps: Deps): McpServer {
       if (isErrorOut(stagesParsed)) return stagesParsed;
       const board = await listRootCards(deps, ws);
       if (isErrorOut(board)) return board;
+      const nodesParsed = parseWrapJson(
+        await wrap(deps, `/api/workspaces/${ws}/nodes`),
+      );
+      if (isErrorOut(nodesParsed)) return nodesParsed;
+      const pins = (
+        (nodesParsed.nodes as {
+          id: string;
+          title: string;
+          type: string;
+          summary: string | null;
+          pinned: number;
+          updated_at: string;
+        }[]) ?? []
+      )
+        .filter((node) => node.pinned === 1)
+        .sort((a, b) => {
+          if (a.updated_at > b.updated_at) return -1;
+          if (a.updated_at < b.updated_at) return 1;
+          if (a.id > b.id) return -1;
+          if (a.id < b.id) return 1;
+          return 0;
+        })
+        .slice(0, 10)
+        .map((node) => ({
+          id: node.id,
+          title: node.title,
+          type: node.type,
+          summary: node.summary,
+        }));
       const projects = (
         (projectsParsed.projects as {
           id: string;
@@ -344,6 +373,7 @@ function createServer(deps: Deps): McpServer {
         stages,
         cards: board.cards,
         truncated: board.truncated,
+        pins,
       });
     },
   );
@@ -352,7 +382,7 @@ function createServer(deps: Deps): McpServer {
     "wiki_search",
     {
       description:
-        "Tool to search wiki nodes by title/summary substring. Use to find a page id. Do not use to read markdown (wiki_read) or list cards. Side effects: none. Hits only; no content.",
+        "Tool to search wiki nodes by title/summary substring. Side effects: none.",
       inputSchema: {
         query: z.string().min(1),
         type: z.string().optional(),
@@ -403,7 +433,7 @@ function createServer(deps: Deps): McpServer {
     "wiki_read",
     {
       description:
-        "Tool to read one wiki page. Use when you have a node_id from search or briefing. Do not use to search. Side effects: none. content[0] is markdown.",
+        "Tool to read one wiki page. Side effects: none.",
       inputSchema: { node_id: z.string() },
       annotations: READ,
     },
@@ -414,7 +444,7 @@ function createServer(deps: Deps): McpServer {
     "wiki_create",
     {
       description:
-        "Tool to create a wiki page. Use when no existing page should hold this. Do not use to patch (wiki_write) or to log a card decision (activity_log). Side effects: write.",
+        "Tool to create a wiki page. Side effects: write.",
       inputSchema: {
         title: z.string(),
         type: z.string().optional(),
@@ -445,7 +475,7 @@ function createServer(deps: Deps): McpServer {
     "wiki_write",
     {
       description:
-        "Tool to patch canonical wiki (title, type, summary, content). Use only after wiki_read on this node in this turn. Do not use to create. Side effects: write; overwrites the page.",
+        "Tool to patch canonical wiki (title, type, summary, content). Side effects: write; overwrites the page.",
       inputSchema: {
         node_id: z.string(),
         title: z.string().optional(),
@@ -484,7 +514,7 @@ function createServer(deps: Deps): McpServer {
     "compose_node",
     {
       description:
-        "Tool to include a wiki node as an ordered child. Use for outline parts. Do not use to cite (cite_node) or attach a card. Side effects: write.",
+        "Tool to include a wiki node as an ordered child. Side effects: write.",
       inputSchema: {
         node_id: z.string(),
         child_id: z.string(),
@@ -509,7 +539,7 @@ function createServer(deps: Deps): McpServer {
     "cite_node",
     {
       description:
-        "Tool to cite another wiki node (ref, not include). Use for pointers. Do not use to nest outline children. Side effects: write.",
+        "Tool to cite another wiki node (ref, not include). Side effects: write.",
       inputSchema: {
         node_id: z.string(),
         to_id: z.string(),
@@ -533,7 +563,7 @@ function createServer(deps: Deps): McpServer {
     "attach_node_work_item",
     {
       description:
-        "Tool to link a wiki node to a card. Use when the page is about that work item. Do not use to compose or cite nodes. Side effects: write.",
+        "Tool to link a wiki node to a card. Side effects: write.",
       inputSchema: {
         node_id: z.string(),
         work_item_id: z.string(),
@@ -552,7 +582,7 @@ function createServer(deps: Deps): McpServer {
     "card_search",
     {
       description:
-        "Tool to find cards (id, title, stage, project). Use before create to avoid duplicates, or to pick an id. Do not use for wiki. Side effects: none.",
+        "Tool to find cards (id, title, stage, project). Side effects: none.",
       inputSchema: {
         query: z.string().optional(),
         project_id: z.string().optional(),
@@ -593,7 +623,7 @@ function createServer(deps: Deps): McpServer {
     "card_get",
     {
       description:
-        "Tool to get one card plus last N Activity events. Use when working a known work_item_id. Do not use to list the board (session_briefing / card_search). Side effects: none.",
+        "Tool to get one card plus last N Activity events. Side effects: none.",
       inputSchema: {
         work_item_id: z.string(),
         limit: z.number().int().min(1).max(20).optional(),
@@ -622,7 +652,7 @@ function createServer(deps: Deps): McpServer {
     "card_create",
     {
       description:
-        "Tool to create a card on a project (starts in backlog). Use after card_search. If the same title already exists on that project, returns it and already_exists true. Side effects: write unless exists.",
+        "Tool to create a card on a project (starts in backlog). Side effects: write unless exists.",
       inputSchema: {
         project_id: z.string(),
         title: z.string(),
@@ -667,7 +697,7 @@ function createServer(deps: Deps): McpServer {
     "card_rename",
     {
       description:
-        "Tool to retitle a card. Use when the work_item_id is known. Do not use to move stages (card_move). Side effects: write.",
+        "Tool to retitle a card. Side effects: write.",
       inputSchema: {
         work_item_id: z.string(),
         title: z.string(),
@@ -691,7 +721,7 @@ function createServer(deps: Deps): McpServer {
     "card_move",
     {
       description:
-        "Tool to move a card between stages. Use when the stage should change; body is the required reason. Do not use to log a decision without a move (activity_log). Side effects: write; writes Activity; may wake the room.",
+        "Tool to move a card between stages. Side effects: write; writes Activity; may wake the room.",
       inputSchema: {
         work_item_id: z.string(),
         from: z.string(),
@@ -721,7 +751,7 @@ function createServer(deps: Deps): McpServer {
     "activity_log",
     {
       description:
-        "Tool to append a typed Activity event (decision, occurrence, note). Use for working memory the next session must see. Do not use for stage changes (card_move) or wiki pages (wiki_write). Side effects: write; may wake the room.",
+        "Tool to append a typed Activity event (decision, occurrence, note). Side effects: write; may wake the room.",
       inputSchema: {
         work_item_id: z.string(),
         type: z.enum(["decision", "occurrence", "note"]),
@@ -751,7 +781,7 @@ function createServer(deps: Deps): McpServer {
     "activity_recent",
     {
       description:
-        "Tool to read recent Activity on a card (failed-approach precheck). Use before repeating an approach. Do not use to write. Side effects: none.",
+        "Tool to read recent Activity on a card (failed-approach precheck). Side effects: none.",
       inputSchema: {
         work_item_id: z.string(),
         limit: z.number().int().min(1).max(20).optional(),

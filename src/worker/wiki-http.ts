@@ -146,6 +146,7 @@ async function createNode(
     filename: null,
     created_at: now,
     updated_at: now,
+    pinned: 0,
   };
   await wiki.insertNode(row);
   if (workItemId) {
@@ -171,6 +172,7 @@ async function patchNode(
     title?: string;
     summary?: string | null;
     content?: string | null;
+    pinned?: number;
     updated_at: string;
   } = { updated_at: new Date().toISOString() };
 
@@ -204,6 +206,12 @@ async function patchNode(
       return Response.json({ error: "bad_request" }, { status: 400 });
     }
     patch.content = content;
+  }
+  if ("pinned" in body) {
+    if (typeof body.pinned !== "boolean") {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+    patch.pinned = body.pinned ? 1 : 0;
   }
 
   await wiki.updateNode(node.id, patch);

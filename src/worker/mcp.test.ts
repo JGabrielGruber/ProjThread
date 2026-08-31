@@ -762,6 +762,70 @@ describe("handleMcp", () => {
     assert.equal(payload.cards[0]?.stage_key, "doing");
   });
 
+  it("session_briefing pins titles without bodies; empty when none", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } = await memberContext();
+    await wiki.insertNode({
+      id: "n-pin",
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      type: "process",
+      payload_kind: "markdown",
+      title: "How we work",
+      summary: "Cold start",
+      content: "SECRET_PIN_BODY",
+      blob_key: null,
+      mime_type: null,
+      byte_size: null,
+      filename: null,
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      pinned: 1,
+    });
+    const pinned = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "session_briefing", {}),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(pinned.isError, true);
+    const text = pinned.content[0]?.text ?? "";
+    const payload = JSON.parse(text) as {
+      pins: {
+        id: string;
+        title: string;
+        type: string;
+        summary: string | null;
+        content?: string;
+      }[];
+    };
+    assert.equal(payload.pins[0]?.title, "How we work");
+    assert.equal(payload.pins[0]?.type, "process");
+    assert.equal(payload.pins[0]?.summary, "Cold start");
+    assert.equal(payload.pins[0]?.content, undefined);
+    assert.equal(text.includes("SECRET_PIN_BODY"), false);
+
+    await wiki.updateNode("n-pin", {
+      pinned: 0,
+      updated_at: "2026-01-03T00:00:00.000Z",
+    });
+    const empty = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "session_briefing", {}),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const emptyPayload = JSON.parse(empty.content[0]?.text ?? "{}") as {
+      pins: unknown[];
+    };
+    assert.deepEqual(emptyPayload.pins, []);
+  });
+
   it("session_briefing with two memberships lists them until workspace_id is passed", async () => {
     const { sessionId, sessions, catalog, wiki, bundle, principal } =
       await memberContext();
@@ -809,9 +873,11 @@ describe("handleMcp", () => {
     const listedPayload = JSON.parse(listed.content[0]?.text ?? "{}") as {
       memberships: { workspace_id: string }[];
       cards?: unknown;
+      pins?: unknown;
     };
     assert.equal(listedPayload.memberships.length, 2);
     assert.equal(listedPayload.cards, undefined);
+    assert.equal("pins" in listedPayload, false);
 
     const wikiFail = await toolResult(
       await handleMcp(

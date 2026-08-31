@@ -18,6 +18,7 @@ function farmNote(overrides: Partial<NodeRow> = {}): NodeRow {
     filename: null,
     created_at: "2026-01-02T00:00:00.000Z",
     updated_at: "2026-01-02T00:00:00.000Z",
+    pinned: 0,
     ...overrides,
   };
 }
@@ -71,6 +72,23 @@ describe("wiki store", () => {
       }),
       false,
     );
+  });
+
+  it("listNodes includes pinned after updateNode", async () => {
+    const wiki = memoryWikiStore();
+    await wiki.insertNode(farmNote({ id: "n1", title: "Pinned" }));
+    await wiki.insertNode(farmNote({ id: "n2", title: "Loose" }));
+
+    const ok = await wiki.updateNode("n1", {
+      pinned: 1,
+      updated_at: "2026-01-03T00:00:00.000Z",
+    });
+    assert.equal(ok, true);
+
+    const listed = await wiki.listNodes("ws-1");
+    const byId = Object.fromEntries(listed.map((row) => [row.id, row]));
+    assert.equal(byId.n1?.pinned, 1);
+    assert.equal(byId.n2?.pinned, 0);
   });
 
   it("linkNodeWorkItem is inserted then exists with one id", async () => {

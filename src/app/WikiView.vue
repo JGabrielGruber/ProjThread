@@ -115,6 +115,11 @@ async function link(): Promise<void> {
   await wiki.linkWorkItem(id);
   linkId.value = "";
 }
+
+async function togglePin(id: string, pinned: number): Promise<void> {
+  if (wiki.status !== "ready") return;
+  await wiki.setPinned(id, pinned !== 1);
+}
 </script>
 
 <template>
@@ -125,11 +130,25 @@ async function link(): Promise<void> {
     </header>
     <template v-if="!nodeId">
       <ul class="list">
-        <li v-for="row in wiki.nodes" :key="row.id">
+        <li
+          v-for="row in wiki.nodes"
+          :key="row.id"
+          :class="{ 'is-pinned': row.pinned === 1 }"
+        >
           <button type="button" class="title" @click="openNode(row.id)">
             {{ row.title }}
           </button>
           <span class="muted">{{ row.type }}</span>
+          <button
+            type="button"
+            class="pin"
+            :aria-pressed="row.pinned === 1"
+            :aria-label="row.pinned === 1 ? 'Unpin' : 'Pin'"
+            :disabled="wiki.status !== 'ready'"
+            @click="togglePin(row.id, row.pinned)"
+          >
+            {{ row.pinned === 1 ? "Unpin" : "Pin" }}
+          </button>
         </li>
       </ul>
       <button
@@ -259,6 +278,15 @@ h2 {
   border: none;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
+}
+
+.list .pin {
+  margin-left: auto;
+  font-size: 0.8125rem;
+}
+
+.list li.is-pinned .title {
+  font-weight: 600;
 }
 
 .form {

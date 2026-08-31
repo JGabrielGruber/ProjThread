@@ -115,9 +115,9 @@ Files: this plan, `docs/STATUS.md`, `AGENTS.md`, `docs/superpowers/plans/2026-08
 
 Files: `src/worker/wiki.test.ts`, `wiki-http.test.ts`, `mcp.test.ts`.
 
-- [ ] Memory wiki: insert two nodes, `updateNode` `{ pinned: 1, updated_at }`, `listNodes` includes `pinned: 1` / `0`.
-- [ ] HTTP: member `PATCH /api/nodes/:id` `{ pinned: true }` → 200, `node.pinned === 1` (or `true` — match existing JSON numbers). Outsider 403. `PATCH` `{ pinned: true }` with no title is enough.
-- [ ] MCP: pin a node via catalog/wiki store, `session_briefing` `{}` → `pins[0].title` set, `pins[0].content` undefined, briefing text has no body string. Unpin / never pinned → `pins` equals `[]`. Two-membership briefing (no workspace_id) still has no `pins` key or empty — **lock: omit `pins` when returning memberships-only.**
+- [x] Memory wiki: insert two nodes, `updateNode` `{ pinned: 1, updated_at }`, `listNodes` includes `pinned: 1` / `0`.
+- [x] HTTP: member `PATCH /api/nodes/:id` `{ pinned: true }` → 200, `node.pinned === 1` (or `true` — match existing JSON numbers). Outsider 403. `PATCH` `{ pinned: true }` with no title is enough.
+- [x] MCP: pin a node via catalog/wiki store, `session_briefing` `{}` → `pins[0].title` set, `pins[0].content` undefined, briefing text has no body string. Unpin / never pinned → `pins` equals `[]`. Two-membership briefing (no workspace_id) still has no `pins` key or empty — **lock: omit `pins` when returning memberships-only.**
 
 Run: `node --test --experimental-strip-types src/worker/wiki.test.ts src/worker/wiki-http.test.ts src/worker/mcp.test.ts` — expect fail (no column / no `pins`).
 
@@ -125,34 +125,34 @@ Run: `node --test --experimental-strip-types src/worker/wiki.test.ts src/worker/
 
 ### Task 3: Migration + wiki HTTP
 
-- [ ] `migrations/0006_wiki_pin.sql`: `ALTER TABLE node ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`
-- [ ] `NodeRow` / `NodeListRow` / `NodePatch` gain `pinned: number` (`0` \| `1`). SELECT lists include `pinned`. `applyPatch` applies it.
-- [ ] `patchNode`: if `pinned` present, must be boolean; store `1`/`0`. Allow PATCH that is only `{ pinned }`.
-- [ ] Tests pass for wiki + wiki-http.
+- [x] `migrations/0006_wiki_pin.sql`: `ALTER TABLE node ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`
+- [x] `NodeRow` / `NodeListRow` / `NodePatch` gain `pinned: number` (`0` \| `1`). SELECT lists include `pinned`. `applyPatch` applies it.
+- [x] `patchNode`: if `pinned` present, must be boolean; store `1`/`0`. Allow PATCH that is only `{ pinned }`.
+- [x] Tests pass for wiki + wiki-http.
 
 ---
 
 ### Task 4: Briefing + contract copy
 
-- [ ] `listRootCards` path unchanged. After stages/cards, `GET` workspace nodes (existing wrap), filter `pinned`, sort, cap 10, project `{ id, title, type, summary }`.
-- [ ] `MCP_INSTRUCTIONS` exact string above.
-- [ ] Descriptions: mechanical trim (Tool-to sentence + Side effects sentence).
-- [ ] Replace skill body as locked.
-- [ ] `mcp.test.ts` green. `npm test` green.
+- [x] `listRootCards` path unchanged. After stages/cards, `GET` workspace nodes (existing wrap), filter `pinned`, sort, cap 10, project `{ id, title, type, summary }`.
+- [x] `MCP_INSTRUCTIONS` exact string above.
+- [x] Descriptions: mechanical trim (Tool-to sentence + Side effects sentence).
+- [x] Replace skill body as locked.
+- [x] `mcp.test.ts` green. `npm test` green.
 
 ---
 
 ### Task 5: PWA pin
 
-- [ ] Wiki store: `setPinned(id, pinned: boolean)` PATCH `{ pinned }`.
-- [ ] Wiki list: control to pin/unpin; show which rows are pinned. No outline chrome. Desktop + compact nav still work.
-- [ ] Store test for the PATCH body.
+- [x] Wiki store: `setPinned(id, pinned: boolean)` PATCH `{ pinned }`.
+- [x] Wiki list: control to pin/unpin; show which rows are pinned. No outline chrome. Desktop + compact nav still work.
+- [x] Store test for the PATCH body.
 
 ---
 
 ### Task 6: Land status
 
-- [ ] STATUS / AGENTS / spec / index **Now** as “STATUS.md after this slice”.
+- [x] STATUS / AGENTS / spec / index **Now** as “STATUS.md after this slice”.
 - [ ] Remote D1: apply `0006` when deploying (José asks). Do not drop Farm data.
 
 Do not deploy unless José asks.

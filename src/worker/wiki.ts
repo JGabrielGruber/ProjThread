@@ -19,6 +19,7 @@ export type NodeRow = {
   filename: string | null;
   created_at: string;
   updated_at: string;
+  pinned: number;
 };
 
 export type NodeListRow = {
@@ -31,6 +32,7 @@ export type NodeListRow = {
   summary: string | null;
   created_at: string;
   updated_at: string;
+  pinned: number;
 };
 
 export type NodePatch = {
@@ -38,6 +40,7 @@ export type NodePatch = {
   title?: string;
   summary?: string | null;
   content?: string | null;
+  pinned?: number;
   updated_at: string;
 };
 
@@ -66,10 +69,10 @@ export type WikiStore = {
   refNode(fromId: string, toId: string): Promise<"inserted" | "exists">;
 };
 
-const NODE_LIST_SELECT = `SELECT id, workspace_id, organization_id, type, payload_kind, title, summary, created_at, updated_at
+const NODE_LIST_SELECT = `SELECT id, workspace_id, organization_id, type, payload_kind, title, summary, created_at, updated_at, pinned
 FROM node`;
 
-const NODE_SELECT = `SELECT id, workspace_id, organization_id, type, payload_kind, title, summary, content, blob_key, mime_type, byte_size, filename, created_at, updated_at
+const NODE_SELECT = `SELECT id, workspace_id, organization_id, type, payload_kind, title, summary, content, blob_key, mime_type, byte_size, filename, created_at, updated_at, pinned
 FROM node`;
 
 function toListRow(row: NodeRow): NodeListRow {
@@ -83,6 +86,7 @@ function toListRow(row: NodeRow): NodeListRow {
     summary: row.summary,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    pinned: row.pinned,
   };
 }
 
@@ -93,6 +97,7 @@ function applyPatch(row: NodeRow, patch: NodePatch): NodeRow {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.summary !== undefined ? { summary: patch.summary } : {}),
     ...(patch.content !== undefined ? { content: patch.content } : {}),
+    ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
     updated_at: patch.updated_at,
   };
 }
@@ -114,8 +119,8 @@ export function d1WikiStore(db: D1Database): WikiStore {
     async insertNode(row) {
       await db
         .prepare(
-          `INSERT INTO node (id, workspace_id, organization_id, type, payload_kind, title, summary, content, blob_key, mime_type, byte_size, filename, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO node (id, workspace_id, organization_id, type, payload_kind, title, summary, content, blob_key, mime_type, byte_size, filename, created_at, updated_at, pinned)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           row.id,
@@ -132,6 +137,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.filename,
           row.created_at,
           row.updated_at,
+          row.pinned,
         )
         .run();
     },
@@ -153,6 +159,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       if (patch.content !== undefined) {
         sets.push("content = ?");
         values.push(patch.content);
+      }
+      if (patch.pinned !== undefined) {
+        sets.push("pinned = ?");
+        values.push(patch.pinned);
       }
       sets.push("updated_at = ?");
       values.push(patch.updated_at);

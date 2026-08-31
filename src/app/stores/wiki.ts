@@ -10,6 +10,7 @@ export type WikiListNode = {
   summary: string | null;
   created_at: string;
   updated_at: string;
+  pinned: number;
 };
 
 export type WikiNode = WikiListNode & {
@@ -45,6 +46,7 @@ export const useWikiStore = defineStore("wiki", () => {
       summary: row.summary,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      pinned: row.pinned,
     };
   }
 
@@ -186,6 +188,32 @@ export const useWikiStore = defineStore("wiki", () => {
     status.value = "ready";
   }
 
+  async function setPinned(id: string, pinned: boolean): Promise<void> {
+    const res = await fetch(`/api/nodes/${id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pinned }),
+    });
+    if (!res.ok) {
+      status.value = "error";
+      error.value = "error";
+      return;
+    }
+    const body = (await res.json()) as {
+      node: WikiNode;
+      work_item_ids: string[];
+    };
+    nodes.value = nodes.value.map((row) =>
+      row.id === body.node.id ? toListRow(body.node) : row,
+    );
+    if (node.value?.id === body.node.id) {
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+    }
+    status.value = "ready";
+  }
+
   return {
     workspaceId,
     nodes,
@@ -199,5 +227,6 @@ export const useWikiStore = defineStore("wiki", () => {
     createNode,
     saveNode,
     linkWorkItem,
+    setPinned,
   };
 });

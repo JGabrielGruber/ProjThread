@@ -248,7 +248,7 @@ Worker catalog handlers stay inside **10 ms CPU** (Free). Room work is the DO (3
 | --- | --- |
 | `src/worker` | Routing, Access, session, D1 catalog, WS upgrade |
 | `src/room` | Durable Object class |
-| `src/app` | PWA — grow to `pages/`, `components/`, `stores/`, `models/`, `services/` |
+| `src/app` | PWA — `pages/`, `components/`, `stores/`, `models/`, `services/` |
 | `src/admin` | Super-admin SPA |
 | `src/lib` | Shared types, token names, API contracts |
 | `migrations/` | D1 SQL |

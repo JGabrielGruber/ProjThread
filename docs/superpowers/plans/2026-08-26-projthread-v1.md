@@ -26,7 +26,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **17. Empty tenant** | *(not written)* | Create a workspace to keep, then Farm seed can go |
 | **18. Config MCP** | *(not written)* | Bot members/projects/stages; after human setup |
 
-**Now:** execute plan 15. Do not write 16–18 until 15 lands. Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
+**Now:** plan 15 landed. Next named work is operator CRUD (plan 16 not written). Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
 
 **Later (named, no plan file yet):**
 

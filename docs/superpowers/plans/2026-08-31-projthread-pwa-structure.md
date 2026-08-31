@@ -164,9 +164,9 @@ Files: this plan, `docs/STATUS.md`, `AGENTS.md`, `docs/superpowers/plans/2026-08
 
 Files: `src/worker/shell.test.ts`, then `shell.ts`, `index.ts`.
 
-- [ ] `isAppHistoryPath("/wiki")` true; `"/config"` true; `"/room/wi-1"` true; `"/room/wi-1/extra"` false; `"/"` false; `"/assets/x.js"` false; `"/admin"` false.
-- [ ] `handleAppShell` GET `/wiki` and `/config` and `/room/wi-1` fetch pathname `/index.html`. GET `/sw.js` fetches `/sw.js`.
-- [ ] Wire `src/worker/index.ts`: if `isAppHistoryPath`, `return handleAppShell(...)`. Else existing `ASSETS.fetch`.
+- [x] `isAppHistoryPath("/wiki")` true; `"/config"` true; `"/room/wi-1"` true; `"/room/wi-1/extra"` false; `"/"` false; `"/assets/x.js"` false; `"/admin"` false.
+- [x] `handleAppShell` GET `/wiki` and `/config` and `/room/wi-1` fetch pathname `/index.html`. GET `/sw.js` fetches `/sw.js`.
+- [x] Wire `src/worker/index.ts`: if `isAppHistoryPath`, `return handleAppShell(...)`. Else existing `ASSETS.fetch`.
 
 Run: `node --test --experimental-strip-types src/worker/shell.test.ts` — fail then pass.
 
@@ -176,9 +176,7 @@ Run: `node --test --experimental-strip-types src/worker/shell.test.ts` — fail 
 
 Files: `src/app/legacy-query.ts`, `src/app/legacy-query.test.ts`.
 
-- [ ] `rewriteLegacyQuery("/", { wiki: "1", workspace: "w", project: "p" })` → `{ path: "/wiki", query: { workspace: "w", project: "p" } }` (no `wiki` key).
-- [ ] `config=1` → `/config`. `item: "wi-1"` → `/room/wi-1`. `item` wins over `wiki`.
-- [ ] `path: "/wiki"` → `null`. Bare `/` with only workspace/project → `null`.
+- [x] Skipped (José: no frozen public API). No `rewriteLegacyQuery`. Query flags `wiki=1` / `config=1` / `item` are not rewritten.
 
 Run: `node --test --experimental-strip-types src/app/legacy-query.test.ts`.
 
@@ -188,9 +186,9 @@ Run: `node --test --experimental-strip-types src/app/legacy-query.test.ts`.
 
 Files: `src/app/services/http.ts`, `http.test.ts`.
 
-- [ ] 200 JSON returns the body; `credentials` is `include`.
-- [ ] 401 throws `ApiError` with `status === 401`.
-- [ ] POST sets `content-type: application/json` when `body` is set.
+- [x] 200 JSON returns the body; `credentials` is `include`.
+- [x] 401 throws `ApiError` with `status === 401`.
+- [x] POST sets `content-type: application/json` when `body` is set.
 
 Run: `node --test --experimental-strip-types src/app/services/http.test.ts`.
 
@@ -200,14 +198,14 @@ Run: `node --test --experimental-strip-types src/app/services/http.test.ts`.
 
 Files: `src/app/models/*`, `src/app/services/{session,catalog,wiki,room}.ts`, stores.
 
-- [ ] Move exported types from each store into the matching `models/` file. Store files re-export them.
-- [ ] Wrappers use `apiJson` (same URLs/bodies the store tests already assert):
+- [x] Move exported types from each store into the matching `models/` file. Store files re-export them.
+- [x] Wrappers use `apiJson` (same URLs/bodies the store tests already assert):
   - `getMe` → `GET /api/me`
   - catalog: projects, stages, work-items, POST work-item, PATCH title, POST events, members, POST member, POST project, PATCH project, PATCH stages
   - wiki: list/get/create/patch/link/setPinned
   - room: GET work-item, GET events, POST events (already in room store)
-- [ ] Stores call wrappers; `App.vue` `fillMissingQuery` uses `listProjects` (no raw `fetch`).
-- [ ] Existing store tests stay green (still mock `globalThis.fetch`).
+- [x] Stores call wrappers; `App.vue` `fillMissingQuery` uses `listProjects` (no raw `fetch`).
+- [x] Existing store tests stay green (still mock `globalThis.fetch`).
 
 `package.json` test script includes `src/app/*.test.ts src/app/services/*.test.ts`.
 
@@ -219,12 +217,12 @@ Run: `npm test`.
 
 Files: `src/app/components/*`, `src/app/pages/*`, `router.ts`, `App.vue`, the four moved views.
 
-- [ ] `git mv` `Modal.vue` `Toast.vue` → `components/`. `git mv` the four views → `pages/{Kanban,Wiki,Room,Config}Page.vue`.
-- [ ] Add `PtButton`, `PtField`, `PtListRow`. Replace duplicated native buttons/inputs/list rows **inside dialogs and wiki/config lists** with the primitives. Kanban column chrome can stay (not a list+dialog).
-- [ ] `router.ts`: `createWebHistory`, routes from **Routes (exact)** with `defineAsyncComponent` page imports. `beforeEach`: if `rewriteLegacyQuery` returns, `next` that location.
-- [ ] `App.vue`: `<RouterView />` instead of v-if views. Nav: `router.replace({ name, query: place })` where `place` is `{ workspace, project }` (and wiki keeps `node` only on wiki). Room links: `{ name: "room", params: { itemId }, query: place }`.
-- [ ] Room Back → `{ name: "kanban", query: place }`. Wiki Back from node → `{ name: "wiki", query: place }` (drop `node`).
-- [ ] `main.ts` still `app.use(router)`.
+- [x] `git mv` `Modal.vue` `Toast.vue` → `components/`. `git mv` the four views → `pages/{Kanban,Wiki,Room,Config}Page.vue`.
+- [x] Add `PtButton`, `PtField`, `PtListRow`. Replace duplicated native buttons/inputs/list rows **inside dialogs and wiki/config lists** with the primitives. Kanban column chrome can stay (not a list+dialog).
+- [x] `router.ts`: `createWebHistory`, routes from **Routes (exact)** with `defineAsyncComponent` page imports. No `beforeEach` rewrite (legacy skipped).
+- [x] `App.vue`: `<RouterView />` instead of v-if views. Nav: `router.replace({ name, query: place })` where `place` is `{ workspace, project }` (and wiki keeps `node` only on wiki). Room links: `{ name: "room", params: { itemId }, query: place }`.
+- [x] Room Back → `{ name: "kanban", query: place }`. Wiki Back from node → `{ name: "wiki", query: place }` (drop `node`).
+- [x] `main.ts` still `app.use(router)`.
 
 No Vue unit tests. Browser smoke when executing: `/`, `/wiki`, `/config`, open a card to `/room/:id`, Back, compact nav, legacy `/?wiki=1&workspace=…&project=…` lands on `/wiki`.
 
@@ -232,9 +230,9 @@ No Vue unit tests. Browser smoke when executing: `/`, `/wiki`, `/config`, open a
 
 ### Task 7: Land status
 
-- [ ] STATUS / AGENTS / spec tree / index **Now** as “STATUS.md after this slice”.
-- [ ] `npm test` green.
-- [ ] Do not deploy unless José asks.
+- [x] STATUS / AGENTS / spec tree / index **Now** as “STATUS.md after this slice”.
+- [x] `npm test` green.
+- [x] Do not deploy unless José asks.
 
 ---
 

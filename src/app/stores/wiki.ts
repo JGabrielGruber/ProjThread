@@ -1,31 +1,26 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type {
+  WikiCreate,
+  WikiListNode,
+  WikiNode,
+  WikiStatus,
+} from "../models/wiki.ts";
+import { ApiError } from "../services/http.ts";
+import {
+  createNode as createNodeRequest,
+  getNode,
+  linkWorkItem as linkWorkItemRequest,
+  listNodes,
+  patchNode,
+} from "../services/wiki.ts";
 
-export type WikiListNode = {
-  id: string;
-  workspace_id: string;
-  type: string;
-  payload_kind: string;
-  title: string;
-  summary: string | null;
-  created_at: string;
-  updated_at: string;
-  pinned: number;
-};
-
-export type WikiNode = WikiListNode & {
-  organization_id: string;
-  content: string | null;
-};
-
-export type WikiStatus = "loading" | "ready" | "error" | "no_session";
-
-export type WikiCreate = {
-  title: string;
-  content?: string;
-  type?: string;
-  work_item_id?: string;
-};
+export type {
+  WikiCreate,
+  WikiListNode,
+  WikiNode,
+  WikiStatus,
+} from "../models/wiki.ts";
 
 export const useWikiStore = defineStore("wiki", () => {
   const workspaceId = ref<string | null>(null);
@@ -50,6 +45,15 @@ export const useWikiStore = defineStore("wiki", () => {
     };
   }
 
+  function fail(err: unknown): void {
+    if (err instanceof ApiError && err.status === 401) {
+      status.value = "no_session";
+      return;
+    }
+    status.value = "error";
+    error.value = "error";
+  }
+
   async function loadList(nextWorkspaceId: string): Promise<void> {
     if (loading.value) return;
     loading.value = true;
@@ -57,24 +61,11 @@ export const useWikiStore = defineStore("wiki", () => {
     error.value = null;
     workspaceId.value = nextWorkspaceId;
     try {
-      const res = await fetch(`/api/workspaces/${nextWorkspaceId}/nodes`, {
-        credentials: "include",
-      });
-      if (res.status === 401) {
-        status.value = "no_session";
-        return;
-      }
-      if (!res.ok) {
-        status.value = "error";
-        error.value = "error";
-        return;
-      }
-      const body = (await res.json()) as { nodes: WikiListNode[] };
+      const body = await listNodes(nextWorkspaceId);
       nodes.value = body.nodes;
       status.value = "ready";
-    } catch {
-      status.value = "error";
-      error.value = "error";
+    } catch (err) {
+      fail(err);
     } finally {
       loading.value = false;
     }
@@ -84,134 +75,76 @@ export const useWikiStore = defineStore("wiki", () => {
     status.value = "loading";
     error.value = null;
     try {
-      const res = await fetch(`/api/nodes/${id}`, { credentials: "include" });
-      if (res.status === 401) {
-        status.value = "no_session";
-        return;
-      }
-      if (!res.ok) {
-        status.value = "error";
-        error.value = "error";
-        return;
-      }
-      const body = (await res.json()) as {
-        node: WikiNode;
-        work_item_ids: string[];
-      };
+      const body = await getNode(id);
       node.value = body.node;
       workItemIds.value = body.work_item_ids;
       status.value = "ready";
-    } catch {
-      status.value = "error";
-      error.value = "error";
+    } catch (err) {
+      fail(err);
     }
   }
 
   async function createNode(input: WikiCreate): Promise<void> {
     const ws = workspaceId.value;
     if (!ws) return;
-    const payload: Record<string, string> = { title: input.title };
-    if (input.content !== undefined) payload.content = input.content;
-    if (input.type !== undefined) payload.type = input.type;
-    if (input.work_item_id !== undefined) payload.work_item_id = input.work_item_id;
-    const res = await fetch(`/api/workspaces/${ws}/nodes`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      status.value = "error";
-      error.value = "error";
-      return;
+    try {
+      const body = await createNodeRequest(ws, input);
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+      nodes.value = [toListRow(body.node), ...nodes.value];
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
     }
-    const body = (await res.json()) as {
-      node: WikiNode;
-      work_item_ids: string[];
-    };
-    node.value = body.node;
-    workItemIds.value = body.work_item_ids;
-    nodes.value = [toListRow(body.node), ...nodes.value];
-    status.value = "ready";
   }
 
   async function saveNode(): Promise<void> {
     const current = node.value;
     if (!current) return;
-    const res = await fetch(`/api/nodes/${current.id}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const body = await patchNode(current.id, {
         title: current.title,
         type: current.type,
         content: current.content,
-      }),
-    });
-    if (!res.ok) {
-      status.value = "error";
-      error.value = "error";
-      return;
+      });
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+      nodes.value = nodes.value.map((row) =>
+        row.id === body.node.id ? toListRow(body.node) : row,
+      );
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
     }
-    const body = (await res.json()) as {
-      node: WikiNode;
-      work_item_ids: string[];
-    };
-    node.value = body.node;
-    workItemIds.value = body.work_item_ids;
-    nodes.value = nodes.value.map((row) =>
-      row.id === body.node.id ? toListRow(body.node) : row,
-    );
-    status.value = "ready";
   }
 
   async function linkWorkItem(workItemId: string): Promise<void> {
     const current = node.value;
     if (!current) return;
-    const res = await fetch(`/api/nodes/${current.id}/work-items`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ work_item_id: workItemId }),
-    });
-    if (!res.ok) {
-      status.value = "error";
-      error.value = "error";
-      return;
+    try {
+      const body = await linkWorkItemRequest(current.id, workItemId);
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
     }
-    const body = (await res.json()) as {
-      node: WikiNode;
-      work_item_ids: string[];
-    };
-    node.value = body.node;
-    workItemIds.value = body.work_item_ids;
-    status.value = "ready";
   }
 
   async function setPinned(id: string, pinned: boolean): Promise<void> {
-    const res = await fetch(`/api/nodes/${id}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pinned }),
-    });
-    if (!res.ok) {
-      status.value = "error";
-      error.value = "error";
-      return;
+    try {
+      const body = await patchNode(id, { pinned });
+      nodes.value = nodes.value.map((row) =>
+        row.id === body.node.id ? toListRow(body.node) : row,
+      );
+      if (node.value?.id === body.node.id) {
+        node.value = body.node;
+        workItemIds.value = body.work_item_ids;
+      }
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
     }
-    const body = (await res.json()) as {
-      node: WikiNode;
-      work_item_ids: string[];
-    };
-    nodes.value = nodes.value.map((row) =>
-      row.id === body.node.id ? toListRow(body.node) : row,
-    );
-    if (node.value?.id === body.node.id) {
-      node.value = body.node;
-      workItemIds.value = body.work_item_ids;
-    }
-    status.value = "ready";
   }
 
   return {

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import Modal from "./Modal.vue";
+import Modal from "../components/Modal.vue";
+import PtButton from "../components/PtButton.vue";
+import PtField from "../components/PtField.vue";
+import PtListRow from "../components/PtListRow.vue";
 import {
   useConfigStore,
   type ConfigStage,
-} from "./stores/config.ts";
+} from "../stores/config.ts";
 
 const route = useRoute();
 const config = useConfigStore();
@@ -106,18 +109,18 @@ async function submitStages(): Promise<void> {
     <section class="block">
     <h3>Members</h3>
     <ul>
-      <li v-for="member in config.members" :key="member.principal_id">
+      <PtListRow v-for="member in config.members" :key="member.principal_id">
         {{ member.display_name }} · {{ member.role }}
-      </li>
+      </PtListRow>
     </ul>
-    <button
+    <PtButton
       type="button"
-      class="primary"
+      variant="primary"
       :disabled="config.status !== 'ready'"
       @click="memberOpen = true"
     >
       Add member
-    </button>
+    </PtButton>
     <Modal
       :open="memberOpen"
       title="Add member"
@@ -125,13 +128,13 @@ async function submitStages(): Promise<void> {
       @close="memberOpen = false"
     >
       <form class="form" @submit.prevent="submitMember">
-        <input v-model="principalId" type="text" aria-label="Principal id" />
-        <select v-model="memberRole" aria-label="Role">
+        <PtField v-model="principalId" type="text" label="Principal id" />
+        <PtField v-model="memberRole" as="select" label="Role">
           <option value="member">member</option>
           <option value="owner">owner</option>
-        </select>
-        <button type="submit" class="primary" :disabled="config.status !== 'ready'">Add</button>
-        <button type="button" @click="memberOpen = false">Cancel</button>
+        </PtField>
+        <PtButton type="submit" variant="primary" :disabled="config.status !== 'ready'">Add</PtButton>
+        <PtButton type="button" @click="memberOpen = false">Cancel</PtButton>
       </form>
     </Modal>
     </section>
@@ -139,25 +142,27 @@ async function submitStages(): Promise<void> {
     <section class="block">
     <h3>Projects</h3>
     <ul>
-      <li v-for="project in config.projects" :key="project.id">
+      <PtListRow v-for="project in config.projects" :key="project.id">
         {{ project.name }} · {{ parentName(project.parent_id) }}
-        <button
-          type="button"
-          :disabled="config.status !== 'ready'"
-          @click="openRename(project.id, project.name)"
-        >
-          Rename
-        </button>
-      </li>
+        <template #meta>
+          <PtButton
+            type="button"
+            :disabled="config.status !== 'ready'"
+            @click="openRename(project.id, project.name)"
+          >
+            Rename
+          </PtButton>
+        </template>
+      </PtListRow>
     </ul>
-    <button
+    <PtButton
       type="button"
-      class="primary"
+      variant="primary"
       :disabled="config.status !== 'ready'"
       @click="projectOpen = true"
     >
       Create project
-    </button>
+    </PtButton>
     <Modal
       :open="projectOpen"
       title="Create project"
@@ -165,8 +170,8 @@ async function submitStages(): Promise<void> {
       @close="projectOpen = false"
     >
       <form class="form" @submit.prevent="submitProject">
-        <input v-model="projectName" type="text" aria-label="Project name" />
-        <select v-model="projectParentKey" aria-label="Parent">
+        <PtField v-model="projectName" type="text" label="Project name" />
+        <PtField v-model="projectParentKey" as="select" label="Parent">
           <option value="">root</option>
           <option
             v-for="project in config.projects"
@@ -175,9 +180,9 @@ async function submitStages(): Promise<void> {
           >
             {{ project.name }}
           </option>
-        </select>
-        <button type="submit" class="primary" :disabled="config.status !== 'ready'">Create</button>
-        <button type="button" @click="projectOpen = false">Cancel</button>
+        </PtField>
+        <PtButton type="submit" variant="primary" :disabled="config.status !== 'ready'">Create</PtButton>
+        <PtButton type="button" @click="projectOpen = false">Cancel</PtButton>
       </form>
     </Modal>
     <Modal
@@ -187,9 +192,9 @@ async function submitStages(): Promise<void> {
       @close="renameOpen = false"
     >
       <form class="form" @submit.prevent="submitRename">
-        <input v-model="renameName" type="text" aria-label="Project name" />
-        <button type="submit" class="primary" :disabled="config.status !== 'ready'">Save</button>
-        <button type="button" @click="renameOpen = false">Cancel</button>
+        <PtField v-model="renameName" type="text" label="Project name" />
+        <PtButton type="submit" variant="primary" :disabled="config.status !== 'ready'">Save</PtButton>
+        <PtButton type="button" @click="renameOpen = false">Cancel</PtButton>
       </form>
     </Modal>
     </section>
@@ -197,28 +202,30 @@ async function submitStages(): Promise<void> {
     <section class="block">
     <h3>Stages</h3>
     <ul>
-      <li v-for="stage in draftStages" :key="stage.key">
+      <PtListRow v-for="stage in draftStages" :key="stage.key">
         <span>{{ stage.key }}</span>
-        <input
-          v-model="stage.label"
-          type="text"
-          :aria-label="`${stage.key} label`"
-        />
-        <input
-          v-model.number="stage.position"
-          type="number"
-          :aria-label="`${stage.key} position`"
-        />
-      </li>
+        <template #meta>
+          <PtField
+            v-model="stage.label"
+            type="text"
+            :label="`${stage.key} label`"
+          />
+          <PtField
+            v-model="stage.position"
+            type="number"
+            :label="`${stage.key} position`"
+          />
+        </template>
+      </PtListRow>
     </ul>
-    <button
+    <PtButton
       type="button"
-      class="primary"
+      variant="primary"
       :disabled="config.status !== 'ready'"
       @click="submitStages"
     >
       Save
-    </button>
+    </PtButton>
     </section>
   </section>
 </template>

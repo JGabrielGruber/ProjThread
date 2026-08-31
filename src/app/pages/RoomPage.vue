@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useRoomStore } from "./stores/room.ts";
+import { useRoomStore } from "../stores/room.ts";
 
 const route = useRoute();
 const router = useRouter();
@@ -14,7 +14,12 @@ function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-const itemId = computed(() => queryString(route.query.item));
+function paramString(value: unknown): string | undefined {
+  if (Array.isArray(value)) return queryString(value[0]);
+  return queryString(value);
+}
+
+const itemId = computed(() => paramString(route.params.itemId));
 
 watch(
   itemId,
@@ -33,9 +38,12 @@ const lines = computed(() =>
 );
 
 async function back(): Promise<void> {
-  const query = { ...route.query };
-  delete query.item;
-  await router.replace({ query });
+  const query: Record<string, string> = {};
+  const workspace = queryString(route.query.workspace);
+  const project = queryString(route.query.project);
+  if (workspace) query.workspace = workspace;
+  if (project) query.project = project;
+  await router.replace({ name: "kanban", query });
 }
 
 function eventFor(eventId: string | null) {

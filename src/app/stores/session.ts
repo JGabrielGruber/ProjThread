@@ -1,19 +1,9 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type { Membership, Principal } from "../models/session.ts";
+import { getMe } from "../services/session.ts";
 
-export type Principal = {
-  id: string;
-  type: string;
-  display_name: string;
-};
-
-export type Membership = {
-  organization_id: string;
-  organization_name: string;
-  workspace_id: string;
-  workspace_name: string;
-  role: string;
-};
+export type { Membership, Principal } from "../models/session.ts";
 
 export const useSessionStore = defineStore("session", () => {
   const principal = ref<Principal | null>(null);
@@ -25,16 +15,7 @@ export const useSessionStore = defineStore("session", () => {
     if (loading.value) return;
     loading.value = true;
     try {
-      const res = await fetch("/api/me", { credentials: "include" });
-      if (res.status === 401 || !res.ok) {
-        principal.value = null;
-        memberships.value = [];
-        return;
-      }
-      const body = (await res.json()) as {
-        principal: Principal;
-        memberships?: Membership[];
-      };
+      const body = await getMe();
       principal.value = body.principal;
       memberships.value = body.memberships ?? [];
     } catch {

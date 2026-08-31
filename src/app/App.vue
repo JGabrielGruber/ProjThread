@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import KanbanBoard from "./KanbanBoard.vue";
-import Toast from "./Toast.vue";
-import { useBoardStore, type Project } from "./stores/board.ts";
+import Toast from "./components/Toast.vue";
+import { listProjects } from "./services/catalog.ts";
+import { useBoardStore } from "./stores/board.ts";
 import { useConfigStore } from "./stores/config.ts";
 import { useRoomStore } from "./stores/room.ts";
 import { useSessionStore, type Membership } from "./stores/session.ts";
@@ -11,10 +11,6 @@ import { useWikiStore } from "./stores/wiki.ts";
 
 type ThemeMode = "system" | "dark" | "light";
 const THEME_ORDER: ThemeMode[] = ["system", "dark", "light"];
-
-const RoomView = defineAsyncComponent(() => import("./RoomView.vue"));
-const WikiView = defineAsyncComponent(() => import("./WikiView.vue"));
-const ConfigView = defineAsyncComponent(() => import("./ConfigView.vue"));
 
 const session = useSessionStore();
 const board = useBoardStore();
@@ -67,31 +63,23 @@ function queryString(value: unknown): string | undefined {
 
 const workspaceQuery = computed(() => queryString(route.query.workspace));
 const projectQuery = computed(() => queryString(route.query.project));
-const itemQuery = computed(() => queryString(route.query.item));
-const wikiQuery = computed(
-  () =>
-    queryString(route.query.wiki) === "1" ||
-    Boolean(queryString(route.query.node)),
-);
-const configQuery = computed(
-  () => queryString(route.query.config) === "1",
-);
 const hasBoardQuery = computed(
   () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
 );
 
-const kanbanNav = computed(
-  () =>
-    Boolean(itemQuery.value) ||
-    (hasBoardQuery.value && !itemQuery.value && !wikiQuery.value && !configQuery.value),
-);
-const wikiNav = computed(() => wikiQuery.value && !itemQuery.value);
-const configNav = computed(
-  () => configQuery.value && !itemQuery.value && !wikiQuery.value,
-);
+const place = computed(() => {
+  const query: Record<string, string> = {};
+  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
+  if (projectQuery.value) query.project = projectQuery.value;
+  return query;
+});
+
+const kanbanNav = computed(() => route.name === "kanban");
+const wikiNav = computed(() => route.name === "wiki");
+const configNav = computed(() => route.name === "config");
 
 const toast = computed(() => {
-  if (itemQuery.value) {
+  if (route.name === "room") {
     if (room.status === "loading") return { message: "Connecting", tone: "info" as const };
     if (room.status === "error") {
       return { message: "Could not open room", tone: "error" as const };
@@ -101,7 +89,7 @@ const toast = computed(() => {
     }
     return { message: "", tone: "info" as const };
   }
-  if (wikiQuery.value) {
+  if (route.name === "wiki") {
     if (wiki.status === "loading") return { message: "Loading", tone: "info" as const };
     if (wiki.status === "error") {
       return { message: "Could not load wiki", tone: "error" as const };
@@ -111,7 +99,7 @@ const toast = computed(() => {
     }
     return { message: "", tone: "info" as const };
   }
-  if (configQuery.value) {
+  if (route.name === "config") {
     if (config.status === "loading") return { message: "Loading", tone: "info" as const };
     if (config.status === "error") {
       return { message: "Could not load config", tone: "error" as const };
@@ -131,24 +119,15 @@ const toast = computed(() => {
 });
 
 async function openBoard(): Promise<void> {
-  const query: Record<string, string> = {};
-  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
-  if (projectQuery.value) query.project = projectQuery.value;
-  await router.replace({ query });
+  await router.replace({ name: "kanban", query: place.value });
 }
 
 async function openWiki(): Promise<void> {
-  const query: Record<string, string> = { wiki: "1" };
-  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
-  if (projectQuery.value) query.project = projectQuery.value;
-  await router.replace({ query });
+  await router.replace({ name: "wiki", query: place.value });
 }
 
 async function openConfig(): Promise<void> {
-  const query: Record<string, string> = { config: "1" };
-  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
-  if (projectQuery.value) query.project = projectQuery.value;
-  await router.replace({ query });
+  await router.replace({ name: "config", query: place.value });
 }
 
 async function fillMissingQuery(memberships: Membership[]): Promise<void> {
@@ -161,11 +140,7 @@ async function fillMissingQuery(memberships: Membership[]): Promise<void> {
   let projectId = projectQuery.value;
   if (!projectId) {
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/projects`, {
-        credentials: "include",
-      });
-      if (!res.ok) return;
-      const body = (await res.json()) as { projects: Project[] };
+      const body = await listProjects(workspaceId);
       const root = body.projects.find((p) => p.parent_id == null);
       if (!root) return;
       projectId = root.id;
@@ -243,10 +218,7 @@ watch(
         </button>
       </nav>
       <div class="stage">
-        <RoomView v-if="itemQuery" />
-        <WikiView v-else-if="wikiQuery" />
-        <ConfigView v-else-if="configQuery" />
-        <KanbanBoard v-else-if="hasBoardQuery" />
+        <RouterView />
       </div>
     </section>
     <Toast :message="toast.message" :tone="toast.tone" />

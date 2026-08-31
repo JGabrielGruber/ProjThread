@@ -7,7 +7,12 @@ import { handleMe } from "./me.ts";
 import { handleMcp, type WorkerContext } from "./mcp.ts";
 import { handleRoom } from "./room-http.ts";
 import { d1SessionStore } from "./session.ts";
-import { handleAdminShell, isAdminPath } from "./shell.ts";
+import {
+  handleAdminShell,
+  handleAppShell,
+  isAdminPath,
+  isAppHistoryPath,
+} from "./shell.ts";
 import { handleWiki } from "./wiki-http.ts";
 import { d1WikiStore } from "./wiki.ts";
 
@@ -59,6 +64,10 @@ export default {
     if (isAdminPath(url.pathname)) {
       if (!(await authorizeAdmin(request, env))) return adminForbidden(request);
       return handleAdminShell(request, env);
+    }
+
+    if (isAppHistoryPath(url.pathname)) {
+      return handleAppShell(request, env);
     }
 
     return env.ASSETS.fetch(request);

@@ -1,31 +1,25 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type {
+  BoardStatus,
+  Project,
+  Stage,
+  WorkItem,
+} from "../models/board.ts";
+import {
+  createWorkItem,
+  listProjects,
+  listStages,
+  listWorkItems,
+  postWorkItemEvent,
+} from "../services/catalog.ts";
 
-export type Project = {
-  id: string;
-  parent_id: string | null;
-  name: string;
-};
-
-export type Stage = {
-  key: string;
-  label: string;
-  position: number;
-};
-
-export type WorkItem = {
-  id: string;
-  project_id: string;
-  workspace_id: string;
-  organization_id: string;
-  title: string;
-  stage_key: string;
-  owner_id: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type BoardStatus = "loading" | "ready" | "error";
+export type {
+  BoardStatus,
+  Project,
+  Stage,
+  WorkItem,
+} from "../models/board.ts";
 
 export const useBoardStore = defineStore("board", () => {
   const projects = ref<Project[]>([]);
@@ -45,26 +39,11 @@ export const useBoardStore = defineStore("board", () => {
     workspaceId.value = nextWorkspaceId;
     projectId.value = nextProjectId;
     try {
-      const [projectsRes, stagesRes, itemsRes] = await Promise.all([
-        fetch(`/api/workspaces/${nextWorkspaceId}/projects`, {
-          credentials: "include",
-        }),
-        fetch(`/api/workspaces/${nextWorkspaceId}/stages`, {
-          credentials: "include",
-        }),
-        fetch(
-          `/api/workspaces/${nextWorkspaceId}/work-items?project_id=${nextProjectId}`,
-          { credentials: "include" },
-        ),
+      const [projectsBody, stagesBody, itemsBody] = await Promise.all([
+        listProjects(nextWorkspaceId),
+        listStages(nextWorkspaceId),
+        listWorkItems(nextWorkspaceId, nextProjectId),
       ]);
-      if (!projectsRes.ok || !stagesRes.ok || !itemsRes.ok) {
-        status.value = "error";
-        error.value = "error";
-        return;
-      }
-      const projectsBody = (await projectsRes.json()) as { projects: Project[] };
-      const stagesBody = (await stagesRes.json()) as { stages: Stage[] };
-      const itemsBody = (await itemsRes.json()) as { work_items: WorkItem[] };
       projects.value = projectsBody.projects;
       stages.value = stagesBody.stages;
       items.value = itemsBody.work_items;
@@ -81,19 +60,13 @@ export const useBoardStore = defineStore("board", () => {
     const ws = workspaceId.value;
     const project = projectId.value;
     if (!ws || !project) return;
-    const res = await fetch(`/api/workspaces/${ws}/work-items`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title, project_id: project }),
-    });
-    if (!res.ok) {
+    try {
+      const item = await createWorkItem(ws, { title, project_id: project });
+      items.value = [...items.value, item];
+    } catch {
       status.value = "error";
       error.value = "error";
-      return;
     }
-    const item = (await res.json()) as WorkItem;
-    items.value = [...items.value, item];
   }
 
   async function moveCard(
@@ -106,26 +79,20 @@ export const useBoardStore = defineStore("board", () => {
     const reason = body.trim();
     if (!reason) return;
     if (to === item.stage_key) return;
-    const res = await fetch(`/api/work-items/${itemId}/events`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const payload = await postWorkItemEvent(itemId, {
         type: "stage_changed",
         from: item.stage_key,
         to,
         body: reason,
-      }),
-    });
-    if (!res.ok) {
+      });
+      items.value = items.value.map((row) =>
+        row.id === itemId ? payload.work_item : row,
+      );
+    } catch {
       status.value = "error";
       error.value = "error";
-      return;
     }
-    const payload = (await res.json()) as { work_item: WorkItem };
-    items.value = items.value.map((row) =>
-      row.id === itemId ? payload.work_item : row,
-    );
   }
 
   return {

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Modal from "./Modal.vue";
-import { renderMarkdown } from "./markdown.ts";
-import { useWikiStore } from "./stores/wiki.ts";
+import Modal from "../components/Modal.vue";
+import PtButton from "../components/PtButton.vue";
+import PtField from "../components/PtField.vue";
+import PtListRow from "../components/PtListRow.vue";
+import { renderMarkdown } from "../markdown.ts";
+import { useWikiStore } from "../stores/wiki.ts";
 
 const NODE_TYPES = ["note", "decision", "process", "research"] as const;
 
@@ -41,16 +44,21 @@ const rendered = computed(() =>
   renderMarkdown(wiki.node?.content ?? ""),
 );
 
+function placeQuery(extra: Record<string, string> = {}): Record<string, string> {
+  const query: Record<string, string> = { ...extra };
+  const workspace = queryString(route.query.workspace);
+  const project = queryString(route.query.project);
+  if (workspace) query.workspace = workspace;
+  if (project) query.project = project;
+  return query;
+}
+
 async function openNode(id: string): Promise<void> {
-  const query = { ...route.query, node: id };
-  delete query.item;
-  await router.replace({ query });
+  await router.replace({ name: "wiki", query: placeQuery({ node: id }) });
 }
 
 async function back(): Promise<void> {
-  const query = { ...route.query, wiki: "1" };
-  delete query.node;
-  await router.replace({ query });
+  await router.replace({ name: "wiki", query: placeQuery() });
 }
 
 function openCreate(): void {
@@ -125,12 +133,12 @@ async function togglePin(id: string, pinned: number): Promise<void> {
 <template>
   <section class="wiki" :class="{ 'is-edit': editing }">
     <header>
-      <button v-if="nodeId" type="button" class="back" @click="back">Back</button>
+      <PtButton v-if="nodeId" type="button" class="back" @click="back">Back</PtButton>
       <h2>{{ wiki.node?.title ?? "Wiki" }}</h2>
     </header>
     <template v-if="!nodeId">
       <ul class="list">
-        <li
+        <PtListRow
           v-for="row in wiki.nodes"
           :key="row.id"
           :class="{ 'is-pinned': row.pinned === 1 }"
@@ -138,27 +146,31 @@ async function togglePin(id: string, pinned: number): Promise<void> {
           <button type="button" class="title" @click="openNode(row.id)">
             {{ row.title }}
           </button>
-          <span class="muted">{{ row.type }}</span>
-          <button
-            type="button"
-            class="pin"
-            :aria-pressed="row.pinned === 1"
-            :aria-label="row.pinned === 1 ? 'Unpin' : 'Pin'"
-            :disabled="wiki.status !== 'ready'"
-            @click="togglePin(row.id, row.pinned)"
-          >
-            {{ row.pinned === 1 ? "Unpin" : "Pin" }}
-          </button>
-        </li>
+          <template #meta>
+            <span class="muted">{{ row.type }}</span>
+            <PtButton
+              type="button"
+              variant="compact"
+              class="pin"
+              :aria-pressed="row.pinned === 1"
+              :aria-label="row.pinned === 1 ? 'Unpin' : 'Pin'"
+              :disabled="wiki.status !== 'ready'"
+              @click="togglePin(row.id, row.pinned)"
+            >
+              {{ row.pinned === 1 ? "Unpin" : "Pin" }}
+            </PtButton>
+          </template>
+        </PtListRow>
       </ul>
-      <button
+      <PtButton
         type="button"
-        class="primary compact"
+        variant="primary"
+        class="compact"
         :disabled="wiki.status !== 'ready'"
         @click="openCreate"
       >
         Create
-      </button>
+      </PtButton>
       <Modal
         :open="createOpen"
         title="Create node"
@@ -166,20 +178,16 @@ async function togglePin(id: string, pinned: number): Promise<void> {
         @close="cancelCreate"
       >
         <form class="form" @submit.prevent="create">
-          <input v-model="draftTitle" type="text" aria-label="Title" />
-          <select v-model="draftType" aria-label="Type">
+          <PtField v-model="draftTitle" type="text" label="Title" />
+          <PtField v-model="draftType" as="select" label="Type">
             <option v-for="type in NODE_TYPES" :key="type" :value="type">
               {{ type }}
             </option>
-          </select>
-          <textarea v-model="draftContent" aria-label="Content" />
-          <input
-            v-model="linkId"
-            type="text"
-            aria-label="Work item id"
-          />
-          <button type="submit" class="primary" :disabled="wiki.status !== 'ready'">Create</button>
-          <button type="button" @click="cancelCreate">Cancel</button>
+          </PtField>
+          <PtField v-model="draftContent" as="textarea" label="Content" />
+          <PtField v-model="linkId" type="text" label="Work item id" />
+          <PtButton type="submit" variant="primary" :disabled="wiki.status !== 'ready'">Create</PtButton>
+          <PtButton type="button" @click="cancelCreate">Cancel</PtButton>
         </form>
       </Modal>
     </template>
@@ -187,38 +195,35 @@ async function togglePin(id: string, pinned: number): Promise<void> {
     <template v-else-if="wiki.node">
       <template v-if="!editing">
         <article class="wiki-read" v-html="rendered" />
-        <button type="button" class="primary compact" :disabled="wiki.status !== 'ready'" @click="startEdit">
+        <PtButton type="button" variant="primary" class="compact" :disabled="wiki.status !== 'ready'" @click="startEdit">
           Edit
-        </button>
+        </PtButton>
         <form class="link" @submit.prevent="link">
-          <input
-            v-model="linkId"
-            type="text"
-            aria-label="Work item id"
-          />
-          <button type="submit" :disabled="wiki.status !== 'ready'">Link</button>
+          <PtField v-model="linkId" type="text" label="Work item id" />
+          <PtButton type="submit" :disabled="wiki.status !== 'ready'">Link</PtButton>
         </form>
         <p class="muted">{{ wiki.workItemIds.join(", ") }}</p>
       </template>
       <div v-else class="wiki-edit">
         <div class="row">
-          <input v-model="draftTitle" type="text" aria-label="Title" />
-          <select v-model="draftType" aria-label="Type">
+          <PtField v-model="draftTitle" type="text" label="Title" />
+          <PtField v-model="draftType" as="select" label="Type">
             <option v-for="type in NODE_TYPES" :key="type" :value="type">
               {{ type }}
             </option>
-          </select>
+          </PtField>
         </div>
-        <textarea
+        <PtField
           v-model="draftContent"
+          as="textarea"
           class="source"
-          aria-label="Source"
+          label="Source"
         />
         <div class="actions">
-          <button type="button" class="primary" :disabled="wiki.status !== 'ready'" @click="save">
+          <PtButton type="button" variant="primary" :disabled="wiki.status !== 'ready'" @click="save">
             Save
-          </button>
-          <button type="button" @click="editing = false">Read</button>
+          </PtButton>
+          <PtButton type="button" @click="editing = false">Read</PtButton>
         </div>
       </div>
     </template>
@@ -285,7 +290,7 @@ h2 {
   font-size: 0.8125rem;
 }
 
-.list li.is-pinned .title {
+.list :deep(.is-pinned .title) {
   font-weight: 600;
 }
 
@@ -307,7 +312,7 @@ h2 {
   margin: 1rem 0 0;
 }
 
-.link input {
+.link :deep(input) {
   flex: 1 1 12rem;
 }
 
@@ -342,11 +347,11 @@ h2 {
   gap: 0.5rem;
 }
 
-.row input {
+.row :deep(input) {
   flex: 1 1 12rem;
 }
 
-.source {
+.wiki-edit :deep(.source) {
   flex: 1;
   min-height: 12rem;
 }

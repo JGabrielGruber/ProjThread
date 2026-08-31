@@ -1,35 +1,24 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type {
+  ActivityEvent,
+  RoomItem,
+  RoomStatus,
+  TapeLine,
+} from "../models/room.ts";
+import { ApiError } from "../services/http.ts";
+import {
+  getWorkItem,
+  listEvents,
+  postEvent as postEventRequest,
+} from "../services/room.ts";
 
-export type RoomStatus = "idle" | "loading" | "ready" | "error" | "no_session";
-
-export type TapeLine = {
-  seq: number;
-  kind: "chat" | "activity";
-  body: string;
-  actor_id: string | null;
-  event_id: string | null;
-  created_at: string;
-};
-
-export type ActivityEvent = {
-  id: string;
-  work_item_id: string;
-  type: string;
-  from_value: string | null;
-  to_value: string | null;
-  body: string | null;
-  actor_id: string;
-  ref_node_id: string | null;
-  created_at: string;
-};
-
-export type RoomItem = {
-  id: string;
-  title: string;
-  stage_key: string;
-  owner_id?: string | null;
-};
+export type {
+  ActivityEvent,
+  RoomItem,
+  RoomStatus,
+  TapeLine,
+} from "../models/room.ts";
 
 type MessageFrame = {
   type: "message";
@@ -75,11 +64,7 @@ export const useRoomStore = defineStore("room", () => {
     if (!id || eventsLoading) return;
     eventsLoading = true;
     try {
-      const res = await fetch(`/api/work-items/${id}/events`, {
-        credentials: "include",
-      });
-      if (!res.ok) return;
-      const payload = (await res.json()) as { events?: ActivityEvent[] };
+      const payload = await listEvents(id);
       if (Array.isArray(payload.events)) {
         events.value = payload.events;
       }
@@ -166,27 +151,19 @@ export const useRoomStore = defineStore("room", () => {
     }
     itemId.value = nextItemId;
     try {
-      const [snapRes, eventsRes] = await Promise.all([
-        fetch(`/api/work-items/${nextItemId}`, { credentials: "include" }),
-        fetch(`/api/work-items/${nextItemId}/events`, {
-          credentials: "include",
-        }),
+      const [body, payload] = await Promise.all([
+        getWorkItem(nextItemId),
+        listEvents(nextItemId),
       ]);
-      if (snapRes.status === 401 || eventsRes.status === 401) {
-        status.value = "no_session";
-        return;
-      }
-      if (!snapRes.ok || !eventsRes.ok) {
-        status.value = "error";
-        return;
-      }
-      const body = (await snapRes.json()) as RoomItem;
       item.value = asRoomItem(body);
-      const payload = (await eventsRes.json()) as { events?: ActivityEvent[] };
       events.value = Array.isArray(payload.events) ? payload.events : [];
       connect();
-    } catch {
-      status.value = "error";
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        status.value = "no_session";
+      } else {
+        status.value = "error";
+      }
     } finally {
       loading.value = false;
     }
@@ -207,27 +184,21 @@ export const useRoomStore = defineStore("room", () => {
   }): Promise<void> {
     const id = itemId.value;
     if (!id) return;
-    const res = await fetch(`/api/work-items/${id}/events`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.status !== 201) return;
-    const data = (await res.json()) as {
-      event: ActivityEvent;
-      work_item: RoomItem;
-    };
-    const idx = events.value.findIndex((row) => row.id === data.event.id);
-    if (idx === -1) {
-      events.value = [...events.value, data.event];
-    } else {
-      events.value = events.value.map((row) =>
-        row.id === data.event.id ? data.event : row,
-      );
-    }
-    if (data.work_item) {
-      item.value = asRoomItem(data.work_item);
+    try {
+      const data = await postEventRequest(id, payload);
+      const idx = events.value.findIndex((row) => row.id === data.event.id);
+      if (idx === -1) {
+        events.value = [...events.value, data.event];
+      } else {
+        events.value = events.value.map((row) =>
+          row.id === data.event.id ? data.event : row,
+        );
+      }
+      if (data.work_item) {
+        item.value = asRoomItem(data.work_item);
+      }
+    } catch {
+      return;
     }
   }
 

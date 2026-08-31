@@ -13,7 +13,7 @@
     "build:admin": "vite build --config src/admin/vite.config.ts",
     "build": "npm run build:app && npm run build:admin",
     "deploy": "npm run build && wrangler deploy",
-    "test": "node --test --experimental-strip-types src/lib/*.test.ts src/worker/*.test.ts src/room/*.test.ts src/app/stores/*.test.ts",
+    "test": "node --test --experimental-strip-types src/lib/*.test.ts src/worker/*.test.ts src/room/*.test.ts src/app/stores/*.test.ts src/app/*.test.ts src/app/services/*.test.ts",
     "types": "wrangler types",
     "seed:local": "wrangler d1 execute projthread --local --file=seeds/local.sql"
   },

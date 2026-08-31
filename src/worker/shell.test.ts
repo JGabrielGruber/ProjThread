@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Env } from "./env.ts";
-import { handleAdminShell } from "./shell.ts";
+import {
+  handleAdminShell,
+  handleAppShell,
+  isAppHistoryPath,
+} from "./shell.ts";
 
 const ORIGIN = "http://127.0.0.1:8787";
 
@@ -41,5 +45,35 @@ describe("handleAdminShell", () => {
       assert.equal(res.status, 200);
       assert.deepEqual(fetched, [path]);
     }
+  });
+});
+
+describe("isAppHistoryPath", () => {
+  it("matches wiki, config, and one-segment room", () => {
+    assert.equal(isAppHistoryPath("/wiki"), true);
+    assert.equal(isAppHistoryPath("/config"), true);
+    assert.equal(isAppHistoryPath("/room/wi-1"), true);
+    assert.equal(isAppHistoryPath("/room/wi-1/extra"), false);
+    assert.equal(isAppHistoryPath("/"), false);
+    assert.equal(isAppHistoryPath("/assets/x.js"), false);
+    assert.equal(isAppHistoryPath("/admin"), false);
+  });
+});
+
+describe("handleAppShell", () => {
+  it("rewrites history paths to /index.html", async () => {
+    for (const path of ["/wiki", "/config", "/room/wi-1"]) {
+      const { env, fetched } = fakeEnv();
+      const res = await handleAppShell(new Request(`${ORIGIN}${path}`), env);
+      assert.equal(res.status, 200);
+      assert.deepEqual(fetched, ["/index.html"]);
+    }
+  });
+
+  it("passes through /sw.js", async () => {
+    const { env, fetched } = fakeEnv();
+    const res = await handleAppShell(new Request(`${ORIGIN}/sw.js`), env);
+    assert.equal(res.status, 200);
+    assert.deepEqual(fetched, ["/sw.js"]);
   });
 });

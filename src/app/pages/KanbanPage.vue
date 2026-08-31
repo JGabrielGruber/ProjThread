@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import Modal from "./Modal.vue";
-import { useBoardStore, type WorkItem } from "./stores/board.ts";
+import Modal from "../components/Modal.vue";
+import PtButton from "../components/PtButton.vue";
+import PtField from "../components/PtField.vue";
+import { useBoardStore, type WorkItem } from "../stores/board.ts";
 
 const route = useRoute();
 const board = useBoardStore();
@@ -80,14 +82,9 @@ async function confirmMove(): Promise<void> {
     @close="cancelAdd"
   >
     <form class="form" @submit.prevent="submit">
-      <input
-        v-model="draft"
-        type="text"
-        name="title"
-        aria-label="New card title"
-      />
-      <button type="submit" class="primary">Add</button>
-      <button type="button" @click="cancelAdd">Cancel</button>
+      <PtField v-model="draft" type="text" name="title" label="New card title" />
+      <PtButton type="submit" variant="primary">Add</PtButton>
+      <PtButton type="button" @click="cancelAdd">Cancel</PtButton>
     </form>
   </Modal>
   <Modal
@@ -97,10 +94,11 @@ async function confirmMove(): Promise<void> {
     @close="cancelMove"
   >
     <form class="form" @submit.prevent="confirmMove">
-      <select
+      <PtField
         v-if="pendingMove"
         v-model="pendingMove.to"
-        aria-label="Stage"
+        as="select"
+        label="Stage"
       >
         <option
           v-for="option in columns"
@@ -109,15 +107,10 @@ async function confirmMove(): Promise<void> {
         >
           {{ option.label }}
         </option>
-      </select>
-      <input
-        v-model="moveReason"
-        type="text"
-        aria-label="Move reason"
-        required
-      />
-      <button type="submit" class="primary">Move</button>
-      <button type="button" @click="cancelMove">Cancel</button>
+      </PtField>
+      <PtField v-model="moveReason" type="text" label="Move reason" required />
+      <PtButton type="submit" variant="primary">Move</PtButton>
+      <PtButton type="button" @click="cancelMove">Cancel</PtButton>
     </form>
   </Modal>
   <div class="board">
@@ -136,7 +129,16 @@ async function confirmMove(): Promise<void> {
         :key="item.id"
         class="card"
       >
-        <router-link :to="{ query: { ...route.query, item: item.id } }">
+        <router-link
+          :to="{
+            name: 'room',
+            params: { itemId: item.id },
+            query: {
+              workspace: route.query.workspace,
+              project: route.query.project,
+            },
+          }"
+        >
           {{ item.title }}
         </router-link>
         <button type="button" class="move" @click="openMove(item)">

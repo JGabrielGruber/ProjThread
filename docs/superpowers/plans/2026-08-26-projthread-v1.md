@@ -21,12 +21,12 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **12. Catalog MCP harden** | `2026-08-28-projthread-catalog-mcp-harden.md` | Node tools: raw markdown in `content[0]`; `compose_node` + `cite_node`; no room, no OAuth |
 | **13. MCP façade** | `2026-08-31-projthread-mcp-facade.md` | Intent tools: briefing, search/read, Activity, implicit workspace; no room, no OAuth |
 | **14. Briefing pins** | `2026-08-31-projthread-briefing-pins.md` | Wiki pins on `session_briefing`; process lives on those nodes; no Config MCP |
-| **15. PWA structure** | *(not written)* | Real routes, `pages/` `components/` `models/` `services/`; extract primitives; no new CRUD |
+| **15. PWA structure** | `2026-08-31-projthread-pwa-structure.md` | Real routes, `pages/` `components/` `models/` `services/`; extract primitives; no new CRUD |
 | **16. Operator CRUD** | *(not written)* | Config/card/wiki/workspace mutations the PWA still lacks; HTTP where missing |
 | **17. Empty tenant** | *(not written)* | Create a workspace to keep, then Farm seed can go |
 | **18. Config MCP** | *(not written)* | Bot members/projects/stages; after human setup |
 
-**Now:** plan 14 landed. Next: **write plan 15 (PWA structure)**. Do not write 16–18 until 15 lands. Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
+**Now:** execute plan 15. Do not write 16–18 until 15 lands. Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
 
 **Later (named, no plan file yet):**
 

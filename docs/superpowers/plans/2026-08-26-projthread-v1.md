@@ -22,17 +22,17 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **13. MCP façade** | `2026-08-31-projthread-mcp-facade.md` | Intent tools: briefing, search/read, Activity, implicit workspace; no room, no OAuth |
 | **14. Briefing pins** | `2026-08-31-projthread-briefing-pins.md` | Wiki pins on `session_briefing`; process lives on those nodes; no Config MCP |
 | **15. PWA structure** | `2026-08-31-projthread-pwa-structure.md` | Real routes, `pages/` `components/` `models/` `services/`; extract primitives; no new CRUD |
-| **16. Operator CRUD** | *(not written)* | Mutations the PWA still lacks; workspace on session; project tree filter chrome; reverse attach on the room; HTTP where missing |
+| **16. Operator CRUD** | `2026-09-01-projthread-operator-crud.md` | Mutations the PWA still lacks; workspace on session; project tree filter chrome; reverse attach on the room; HTTP where missing |
 | **17. Empty tenant** | *(not written)* | Create a workspace to keep, then Farm seed can go |
 | **18. Config MCP** | *(not written)* | Bot members/projects/stages; after human setup |
 
-**Now:** plan 15 landed. Next named work is operator CRUD (plan 16 not written). Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
+**Now:** execute plan 16. Do not write 17–18 until 16 lands. Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
 
 **Later (named, no plan file yet):**
 
 | Work | When |
 | --- | --- |
-| Operator CRUD (16) | After PWA structure |
+| Operator CRUD (16) | Execute 16 |
 | Empty tenant / drop Farm D1 (17 + ops) | After operator CRUD can create a workspace to keep |
 | Config MCP (18) | After human empty-tenant |
 | Deploy briefing pins + remote `0006` | Ops, when José asks |

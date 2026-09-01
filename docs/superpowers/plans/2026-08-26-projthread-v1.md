@@ -22,7 +22,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **13. MCP façade** | `2026-08-31-projthread-mcp-facade.md` | Intent tools: briefing, search/read, Activity, implicit workspace; no room, no OAuth |
 | **14. Briefing pins** | `2026-08-31-projthread-briefing-pins.md` | Wiki pins on `session_briefing`; process lives on those nodes; no Config MCP |
 | **15. PWA structure** | `2026-08-31-projthread-pwa-structure.md` | Real routes, `pages/` `components/` `models/` `services/`; extract primitives; no new CRUD |
-| **16. Operator CRUD** | *(not written)* | Config/card/wiki/workspace mutations the PWA still lacks; HTTP where missing |
+| **16. Operator CRUD** | *(not written)* | Mutations the PWA still lacks; workspace on session; project tree filter chrome; reverse attach on the room; HTTP where missing |
 | **17. Empty tenant** | *(not written)* | Create a workspace to keep, then Farm seed can go |
 | **18. Config MCP** | *(not written)* | Bot members/projects/stages; after human setup |
 

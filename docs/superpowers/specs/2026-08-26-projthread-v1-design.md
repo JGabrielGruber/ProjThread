@@ -75,7 +75,7 @@ Workspace ≠ Project. Product name ≠ the Project entity. In dotproj, Category
 - Skeleton only when the list is empty; refetch does not blank the board.
 - Async work has `showStatus` / `showError` (slugs). Never silent failure.
 - ETag / skip apply if unchanged.
-- **vue-router owns surfaces** (kanban, wiki, config, room). Selection ids live in the route (path or query). The dummy `/` route that renders nothing is not the destination.
+- **vue-router owns surfaces** (kanban, wiki, config, room). Room id is the path. Wiki `node` may stay query. Workspace is **not** a place key in the URL (see **Stage chrome**).
 - Lazy pages: room, wiki, config.
 - Debounce search. No poll. No WS frame per keystroke.
 
@@ -96,12 +96,24 @@ The product must be **operable**: a human (and later the Bot via Config MCP) can
 
 First load may be fat. After boot, smooth on a phone and on 180 Hz.
 
+### Stage chrome (standard)
+
+Same chrome on **kanban, wiki, and room** (the card detail). Config can stay a settings page.
+
+- **Workspace** is the place. Bound on the D1 `session` row (picker writes it; `/api/me` and `session_briefing` read it). Cookie and Bearer stay opaque ids. Not a URL query. Not a refresh/OAuth token (v1 has none).
+- **Project** is a forest **filter**, not a session claim and not required in the URL. Unfiltered / root = whole workspace. A child = that node and descendants (board already lists that way). Filing a card still needs `project_id` on the row.
+- **Desktop:** project tree on the **right**. Left rail stays app nav. Wiki read keeps the measure; the tree does not eat the page. **Not** a graph canvas.
+- **Mobile:** no second rail. Expandable **filters** under the compact nav; height follows content up to ~**80%** of the viewport; collapse to read/chat.
+- **Room** also lists **nodes of this work item** (`node_work_item`, reverse of wiki attach). Wiki density on the card, not a second wiki in Activity. HTTP today is node→items only; reverse list is missing.
+
+Local store hydration (keep last payload, refresh from origin, ETag) stays a later slice. Graph canvas stays an absence.
+
 ## PWA product (remaining v1)
 
 Order (each a plan STATUS names; do not start the next until it does):
 
 1. **Structure** — routes, pages, components, models, services; extract primitives from current screens; **no new product CRUD**.
-2. **Operator CRUD** — Config completeness (remove member, PATCH role; project reparent; project archive/delete if HTTP is added; owner picker — `owner_changed` already exists). Card archive/delete only with HTTP. Wiki: outline/cites and attach chrome (HTTP exists); node delete only with HTTP. Workspace create in the PWA (today only `POST /api/admin/organizations`). Stage **keys** stay the minted `backlog` / `doing` / `done` unless a later spec opens add/delete keys. Labels/order already edit.
+2. **Operator CRUD** — Workspace picker + bind workspace on the session (see **Stage chrome**). Config completeness (remove member, PATCH role; project reparent; project archive/delete if HTTP is added; owner picker — `owner_changed` already exists). Card archive/delete only with HTTP. Wiki: outline/cites and attach chrome; room: nodes of this card (reverse attach; add HTTP if missing); node delete only with HTTP. Workspace create in the PWA (today only `POST /api/admin/organizations`). Project tree as filter chrome (right / mobile filters). Stage **keys** stay the minted `backlog` / `doing` / `done` unless a later spec opens add/delete keys. Labels/order already edit.
 3. **Empty tenant** — create a workspace the operator will keep, then drop Farm seed / remote D1 is ops. Not before (2) can create that workspace.
 4. **Config MCP** — Bot members/projects/stages. After human setup.
 
@@ -181,6 +193,7 @@ Text ids (ULID). Timestamps ISO-8601. Tenant-scoped tables carry `organization_i
 -- principals, sessions, membership
 principal(id, type, display_name, created_at)
 session(id, principal_id, minted_by, expires_at, revoked_at, created_at)
+  -- later: workspace_id (last place; not project)
 organization(id, name, created_at)
 workspace(id, organization_id, name, created_at)
 membership(workspace_id, principal_id, role)  -- owner | member
@@ -282,7 +295,7 @@ Plan 11 shipped a **thin adapter**. Plan 12 hardened markdown + compose/cite. Pl
 
 - Same-origin `POST /mcp` Streamable HTTP (`createMcpHandler`, stateless, JSON responses).
 - Same D1 `session` as Bearer on app HTTP. Cookie is ignored on `/mcp`.
-- Workspace is implicit when the principal has one membership. Project is not bound to the session.
+- Workspace is implicit when the principal has one membership, or the workspace bound on the session when that lands. Project is not bound to the session (forest filter).
 - Tools are intents: `session_briefing`, `wiki_search` / `wiki_read` / `wiki_create` / `wiki_write`, `compose_node` / `cite_node` / `attach_node_work_item`, `card_search` / `card_get` / `card_create` / `card_rename` / `card_move`, `activity_log` / `activity_recent`. They still wrap catalog + wiki HTTP. Wrap names (`me`, `list_*`, `get_work_item`, `get_node`, …) are gone. Room / WS stay out.
 - Node tools that return a page: `content[0].text` is raw markdown; envelope JSON in `content[1]` does not repeat `node.content`.
 - `compose_node` wraps `POST .../includes`; `cite_node` wraps `POST .../refs`. Attach stays `attach_node_work_item`.

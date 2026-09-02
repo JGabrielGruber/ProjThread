@@ -115,7 +115,7 @@ Order (each a plan STATUS names; do not start the next until it does):
 1. **Structure** — routes, pages, components, models, services; extract primitives from current screens; **no new product CRUD**.
 2. **Operator CRUD** — **landed** (plan 16). Workspace on session; project tree filter; Config member role/remove, reparent, workspace create; owner picker; reverse attach; wiki outline/cites. Card/node/project archive/delete still only with HTTP (not added).
 3. **Empty tenant** — **this plan** (`docs/superpowers/plans/2026-09-02-projthread-empty-tenant.md`). First workspace in the PWA; Farm seed file retired; remote Farm D1 is ops.
-4. **Config MCP** — Bot members/projects/stages. After human setup.
+4. **Config MCP** — **landed** (`docs/superpowers/plans/2026-09-02-projthread-config-mcp.md`). Bot members/projects/stages/`workspace_create`. Wrap catalog HTTP. No principal mint. After human setup.
 
 **Ops (not plans):** deploy briefing pins + remote `0006`; reset Grok Bot memory; custom-domain Deploy stays parked until a domain exists.
 
@@ -308,7 +308,7 @@ Plan 14 shipped:
 
 - `node.pinned` (`0` \| `1`). Human toggles in PWA wiki. Cap 10 on `session_briefing` as `{ id, title, type, summary }` (no bodies).
 - Cold bot: briefing, then `wiki_read` the pins. Do not encode workspace process in a Grok skill.
-- Empty tenant is plan 17. Config MCP and dropping remote Farm D1 stay later. Operator CRUD landed locally.
+- Empty tenant is plan 17 (landed). Config MCP is plan 18 (landed). Dropping remote Farm D1 stays later. Operator CRUD landed.
 
 ## Parked: node edges
 

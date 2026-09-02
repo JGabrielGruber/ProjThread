@@ -24,9 +24,9 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **15. PWA structure** | `2026-08-31-projthread-pwa-structure.md` | Real routes, `pages/` `components/` `models/` `services/`; extract primitives; no new CRUD |
 | **16. Operator CRUD** | `2026-09-01-projthread-operator-crud.md` | Mutations the PWA still lacks; workspace on session; project tree filter chrome; reverse attach on the room; HTTP where missing |
 | **17. Empty tenant** | `2026-09-02-projthread-empty-tenant.md` | First-workspace PWA; retire Farm seed. Remote D1 drop is ops |
-| **18. Config MCP** | *(not written)* | Bot members/projects/stages; after human setup |
+| **18. Config MCP** | `2026-09-02-projthread-config-mcp.md` | Bot members/projects/stages/`workspace_create`; wrap catalog HTTP; no principal mint |
 
-**Now:** no open slice. Next named work is write Config MCP (plan 18, not written). Park plan 8. Do not start OAuth. Do not start room MCP. Do not drop remote D1 unless José asks.
+**Now:** no open slice. Config MCP (18) landed. Park plan 8. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks.
 
 **Later (named, no plan file yet):**
 
@@ -34,6 +34,6 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | --- | --- |
 | Operator CRUD (16) | Landed |
 | Empty tenant (17) | Landed (local + workers.dev). Farm seed file gone. Remote Farm rows wait on José |
-| Config MCP (18) | After human empty-tenant |
+| Config MCP (18) | Landed (local; workers.dev until next deploy) |
 | Deploy briefing pins + remote `0006` | Done (`0006`+`0007` on remote; version `2be119b6-9da2-43f5-b07a-692acfc5fb9d`) |
 | Reset Grok Bot memory | Ops, anytime |

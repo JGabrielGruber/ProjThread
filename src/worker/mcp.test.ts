@@ -14,6 +14,7 @@ import {
   type WorkspaceMemberRow,
 } from "./catalog.ts";
 import { COOKIE_NAME } from "../lib/cookies.ts";
+import { newId } from "../lib/id.ts";
 import type { Env } from "./env.ts";
 import { handleMcp } from "./mcp.ts";
 import {
@@ -61,6 +62,15 @@ const TOOL_NAMES = [
   "card_move",
   "activity_log",
   "activity_recent",
+  "workspace_create",
+  "members_list",
+  "members_add",
+  "members_set_role",
+  "members_remove",
+  "project_create",
+  "project_rename",
+  "project_reparent",
+  "stages_replace",
 ] as const;
 
 function memoryCatalog(): CatalogStore {
@@ -141,14 +151,25 @@ function memoryCatalog(): CatalogStore {
       }
       return out;
     },
-    async updateMembershipRole() {
-      throw new Error("unused");
+    async updateMembershipRole(workspaceId, principalId, role) {
+      const key = membershipKey(workspaceId, principalId);
+      const row = memberships.get(key);
+      if (!row) return false;
+      memberships.set(key, { ...row, role });
+      return true;
     },
-    async deleteMembership() {
-      throw new Error("unused");
+    async deleteMembership(workspaceId, principalId) {
+      const key = membershipKey(workspaceId, principalId);
+      if (!memberships.has(key)) return false;
+      memberships.delete(key);
+      return true;
     },
-    async countOwners() {
-      throw new Error("unused");
+    async countOwners(workspaceId) {
+      let n = 0;
+      for (const row of memberships.values()) {
+        if (row.workspace_id === workspaceId && row.role === "owner") n += 1;
+      }
+      return n;
     },
     async insertMembership(row) {
       const key = membershipKey(row.workspace_id, row.principal_id);
@@ -174,8 +195,11 @@ function memoryCatalog(): CatalogStore {
       projects.set(id, { ...row, name });
       return true;
     },
-    async updateProjectParent() {
-      throw new Error("unused");
+    async updateProjectParent(id, parentId) {
+      const row = projects.get(id);
+      if (!row) return false;
+      projects.set(id, { ...row, parent_id: parentId });
+      return true;
     },
     async listStages(workspaceId) {
       return [...stages.values()]
@@ -244,8 +268,45 @@ function memoryCatalog(): CatalogStore {
         },
       );
     },
-    async insertWorkspaceFor() {
-      throw new Error("unused");
+    async insertWorkspaceFor(principalId, name) {
+      const now = new Date().toISOString();
+      const organization = { id: newId(), name, created_at: now };
+      const workspace = {
+        id: newId(),
+        organization_id: organization.id,
+        name,
+        created_at: now,
+      };
+      const project = {
+        id: newId(),
+        workspace_id: workspace.id,
+        organization_id: organization.id,
+        parent_id: null as const,
+        name,
+        created_at: now,
+      };
+      organizations.set(organization.id, organization);
+      workspaces.set(workspace.id, workspace);
+      for (const stage of DEFAULT_STAGES) {
+        const row: StageRow = {
+          workspace_id: workspace.id,
+          key: stage.key,
+          label: stage.label,
+          position: stage.position,
+        };
+        stages.set(`${row.workspace_id}:${row.key}`, row);
+      }
+      projects.set(project.id, project);
+      memberships.set(membershipKey(workspace.id, principalId), {
+        workspace_id: workspace.id,
+        principal_id: principalId,
+        role: "owner",
+      });
+      return {
+        organization: { id: organization.id, name },
+        workspace: { id: workspace.id, name },
+        project: { id: project.id, name, parent_id: null },
+      };
     },
     async listOrganizations() {
       return [...organizations.values()].map((o) => ({
@@ -1128,5 +1189,314 @@ describe("handleMcp", () => {
     };
     assert.equal(payload.events.at(-1)?.type, "decision");
     assert.match(payload.events.at(-1)?.body ?? "", /twice daily/i);
+  });
+
+  it("workspace_create returns org, workspace, root project; caller is owner", async () => {
+    const { sessionId, sessions, catalog, wiki, principal } =
+      await memberContext();
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "workspace_create", { name: "Palm Engine" }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      organization: { name: string };
+      workspace: { id: string; name: string };
+      project: { name: string; parent_id: string | null };
+    };
+    assert.equal(payload.organization.name, "Palm Engine");
+    assert.equal(payload.workspace.name, "Palm Engine");
+    assert.equal(payload.project.name, "Palm Engine");
+    assert.equal(payload.project.parent_id, null);
+    const listed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_list", {
+          workspace_id: payload.workspace.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const members = JSON.parse(listed.content[0]?.text ?? "{}") as {
+      members: { principal_id: string; role: string }[];
+    };
+    assert.equal(members.members.length, 1);
+    assert.equal(members.members[0]?.principal_id, principal.id);
+    assert.equal(members.members[0]?.role, "owner");
+  });
+
+  it("members_add unknown principal_id is isError 400", async () => {
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_add", { principal_id: "Gruber" }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      status: number;
+      error: string;
+    };
+    assert.equal(payload.status, 400);
+    assert.equal(payload.error, "bad_request");
+  });
+
+  it("members_add existing principal then members_list includes them", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } =
+      await memberContext();
+    const extra = await mintSession(sessions);
+    const added = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_add", {
+          principal_id: extra.principal.id,
+          role: "member",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(added.isError, true);
+    const payload = JSON.parse(added.content[0]?.text ?? "{}") as {
+      member: { principal_id: string; role: string };
+    };
+    assert.equal(payload.member.principal_id, extra.principal.id);
+    assert.equal(payload.member.role, "member");
+    const listed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_list", {
+          workspace_id: bundle.workspace.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const members = JSON.parse(listed.content[0]?.text ?? "{}") as {
+      members: { principal_id: string }[];
+    };
+    assert.ok(
+      members.members.some((row) => row.principal_id === extra.principal.id),
+    );
+  });
+
+  it("members_set_role as member is isError 403", async () => {
+    const { sessionId, sessions, catalog, wiki, principal } =
+      await memberContext();
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_set_role", {
+          principal_id: principal.id,
+          role: "owner",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      status: number;
+    };
+    assert.equal(payload.status, 403);
+  });
+
+  it("owner members_set_role and members_remove; last owner is 400", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle, principal } =
+      await memberContext();
+    await catalog.updateMembershipRole(
+      bundle.workspace.id,
+      principal.id,
+      "owner",
+    );
+    const extra = await mintSession(sessions);
+    const added = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_add", {
+          principal_id: extra.principal.id,
+          role: "member",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(added.isError, true);
+    const promoted = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_set_role", {
+          principal_id: extra.principal.id,
+          role: "owner",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(promoted.isError, true);
+    const removed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_remove", {
+          principal_id: extra.principal.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(removed.isError, true);
+    const last = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "members_remove", {
+          principal_id: principal.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(last.isError, true);
+    const payload = JSON.parse(last.content[0]?.text ?? "{}") as {
+      status: number;
+      error: string;
+    };
+    assert.equal(payload.status, 400);
+    assert.equal(payload.error, "last_owner");
+  });
+
+  it("project_create, project_rename, project_reparent", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } =
+      await memberContext();
+    const created = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "project_create", {
+          name: "Keep",
+          parent_id: bundle.project.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(created.isError, true);
+    const createdPayload = JSON.parse(created.content[0]?.text ?? "{}") as {
+      project: { id: string; name: string; parent_id: string | null };
+    };
+    assert.equal(createdPayload.project.name, "Keep");
+    assert.equal(createdPayload.project.parent_id, bundle.project.id);
+    const renamed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "project_rename", {
+          project_id: createdPayload.project.id,
+          name: "Palm",
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const renamedPayload = JSON.parse(renamed.content[0]?.text ?? "{}") as {
+      project: { name: string };
+    };
+    assert.equal(renamedPayload.project.name, "Palm");
+    const cycle = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "project_reparent", {
+          project_id: bundle.project.id,
+          parent_id: createdPayload.project.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(cycle.isError, true);
+    const cyclePayload = JSON.parse(cycle.content[0]?.text ?? "{}") as {
+      status: number;
+    };
+    assert.equal(cyclePayload.status, 400);
+    const reparented = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "project_reparent", {
+          project_id: createdPayload.project.id,
+          parent_id: null,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const reparentedPayload = JSON.parse(
+      reparented.content[0]?.text ?? "{}",
+    ) as { project: { parent_id: string | null } };
+    assert.equal(reparentedPayload.project.parent_id, null);
+  });
+
+  it("stages_replace relabels; extra key is 400", async () => {
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+    const ok = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "stages_replace", {
+          stages: [
+            { key: "backlog", label: "Inbox", position: 0 },
+            { key: "doing", label: "Doing", position: 1 },
+            { key: "done", label: "Done", position: 2 },
+          ],
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(ok.isError, true);
+    const payload = JSON.parse(ok.content[0]?.text ?? "{}") as {
+      stages: { key: string; label: string }[];
+    };
+    const backlog = payload.stages.find((row) => row.key === "backlog");
+    assert.equal(backlog?.label, "Inbox");
+    const bad = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "stages_replace", {
+          stages: [
+            { key: "backlog", label: "Inbox", position: 0 },
+            { key: "doing", label: "Doing", position: 1 },
+            { key: "done", label: "Done", position: 2 },
+            { key: "blocked", label: "Blocked", position: 3 },
+          ],
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.equal(bad.isError, true);
+    const err = JSON.parse(bad.content[0]?.text ?? "{}") as {
+      status: number;
+    };
+    assert.equal(err.status, 400);
   });
 });

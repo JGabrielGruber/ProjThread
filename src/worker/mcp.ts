@@ -26,7 +26,7 @@ const MCP_OPTIONS = {
   legacy: "stateless" as const,
 };
 
-const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory. Start with session_briefing; wiki_read the pins — that is how this workspace works. Then search. Session may bind workspace; omit workspace_id when bound or when there is one membership.`;
+const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory. Start with session_briefing; wiki_read the pins — that is how this workspace works. Then search. Session may bind workspace; omit workspace_id when bound or when there is one membership. Maintain members, projects, stages, and extra workspaces with workspace_create, members_*, project_*, stages_replace. principal_id is an id, not a display name.`;
 
 const HITS_CAP = 50;
 
@@ -811,6 +811,198 @@ function createServer(deps: Deps): McpServer {
       let events = (parsed.events as { type: string }[]) ?? [];
       if (type) events = events.filter((event) => event.type === type);
       return jsonResult({ events: events.slice(-n) });
+    },
+  );
+
+  server.registerTool(
+    "workspace_create",
+    {
+      description:
+        "Tool to create an organization + workspace + root project + default stages; caller becomes owner. Use when this principal needs a new place. Do not use to add a member or a project inside an existing workspace. Side effects: write. Does not mint a principal.",
+      inputSchema: { name: z.string() },
+      annotations: WRITE,
+    },
+    async ({ name }) =>
+      wrap(deps, "/api/organizations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+  );
+
+  server.registerTool(
+    "members_list",
+    {
+      description:
+        "Tool to list workspace members (principal_id, display_name, type, role). Use before add/role/remove. Do not use to search wiki or cards. Side effects: none.",
+      inputSchema: { workspace_id: z.string().optional() },
+      annotations: READ,
+    },
+    async ({ workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(deps, `/api/workspaces/${ws}/members`);
+    },
+  );
+
+  server.registerTool(
+    "members_add",
+    {
+      description:
+        "Tool to add an existing principal to the workspace. Use a principal_id from briefing or members_list, not a display name. Do not use to create a login. Side effects: write. Unknown principal_id is an error.",
+      inputSchema: {
+        principal_id: z.string(),
+        role: z.enum(["owner", "member"]).optional(),
+        workspace_id: z.string().optional(),
+      },
+      annotations: WRITE,
+    },
+    async ({ principal_id, role, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(deps, `/api/workspaces/${ws}/members`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: compactJson({ principal_id, role }),
+      });
+    },
+  );
+
+  server.registerTool(
+    "members_set_role",
+    {
+      description:
+        "Tool to set a member role (owner or member). Caller must be owner. Do not use to add or remove. Side effects: write. Last owner demotion is an error.",
+      inputSchema: {
+        principal_id: z.string(),
+        role: z.enum(["owner", "member"]),
+        workspace_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    async ({ principal_id, role, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(
+        deps,
+        `/api/workspaces/${ws}/members/${encodeURIComponent(principal_id)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ role }),
+        },
+      );
+    },
+  );
+
+  server.registerTool(
+    "members_remove",
+    {
+      description:
+        "Tool to remove a member. Caller must be owner. Do not use to change role. Side effects: write. Last owner removal is an error.",
+      inputSchema: {
+        principal_id: z.string(),
+        workspace_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    async ({ principal_id, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(
+        deps,
+        `/api/workspaces/${ws}/members/${encodeURIComponent(principal_id)}`,
+        { method: "DELETE" },
+      );
+    },
+  );
+
+  server.registerTool(
+    "project_create",
+    {
+      description:
+        "Tool to create a project (optional parent_id). Use after session_briefing. Do not use to rename or reparent. Side effects: write.",
+      inputSchema: {
+        name: z.string(),
+        parent_id: z.string().optional(),
+        workspace_id: z.string().optional(),
+      },
+      annotations: WRITE,
+    },
+    async ({ name, parent_id, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(deps, `/api/workspaces/${ws}/projects`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: compactJson({ name, parent_id }),
+      });
+    },
+  );
+
+  server.registerTool(
+    "project_rename",
+    {
+      description:
+        "Tool to retitle a project. Use when project_id is known. Do not use to move it in the forest (project_reparent). Side effects: write.",
+      inputSchema: {
+        project_id: z.string(),
+        name: z.string(),
+      },
+      annotations: WRITE,
+    },
+    async ({ project_id, name }) =>
+      wrap(deps, `/api/projects/${project_id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+  );
+
+  server.registerTool(
+    "project_reparent",
+    {
+      description:
+        "Tool to set a project's parent_id (string or null for root). Use to place it in the forest. Do not use to rename. Side effects: write. Cycle or other-workspace parent is an error.",
+      inputSchema: {
+        project_id: z.string(),
+        parent_id: z.union([z.string(), z.null()]),
+      },
+      annotations: WRITE,
+    },
+    async ({ project_id, parent_id }) =>
+      wrap(deps, `/api/projects/${project_id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parent_id }),
+      }),
+  );
+
+  server.registerTool(
+    "stages_replace",
+    {
+      description:
+        "Tool to replace workspace stage labels and positions. Pass the full list; keys must stay backlog, doing, done. Do not invent keys. Side effects: write.",
+      inputSchema: {
+        stages: z.array(
+          z.object({
+            key: z.string(),
+            label: z.string(),
+            position: z.number(),
+          }),
+        ),
+        workspace_id: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    async ({ stages, workspace_id }) => {
+      const ws = await workspaceId(deps, workspace_id);
+      if (typeof ws !== "string") return ws;
+      return wrap(deps, `/api/workspaces/${ws}/stages`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stages }),
+      });
     },
   );
 

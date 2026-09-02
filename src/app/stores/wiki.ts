@@ -10,9 +10,12 @@ import { ApiError } from "../services/http.ts";
 import {
   createNode as createNodeRequest,
   getNode,
+  includeNode as includeNodeRequest,
   linkWorkItem as linkWorkItemRequest,
   listNodes,
   patchNode,
+  refNode as refNodeRequest,
+  type WikiRel,
 } from "../services/wiki.ts";
 
 export type {
@@ -27,6 +30,8 @@ export const useWikiStore = defineStore("wiki", () => {
   const nodes = ref<WikiListNode[]>([]);
   const node = ref<WikiNode | null>(null);
   const workItemIds = ref<string[]>([]);
+  const includes = ref<WikiRel[]>([]);
+  const refs = ref<WikiRel[]>([]);
   const status = ref<WikiStatus>("ready");
   const error = ref<string | null>(null);
   const loading = ref(false);
@@ -54,14 +59,17 @@ export const useWikiStore = defineStore("wiki", () => {
     error.value = "error";
   }
 
-  async function loadList(nextWorkspaceId: string): Promise<void> {
+  async function loadList(
+    nextWorkspaceId: string,
+    projectId?: string | null,
+  ): Promise<void> {
     if (loading.value) return;
     loading.value = true;
     status.value = "loading";
     error.value = null;
     workspaceId.value = nextWorkspaceId;
     try {
-      const body = await listNodes(nextWorkspaceId);
+      const body = await listNodes(nextWorkspaceId, projectId);
       nodes.value = body.nodes;
       status.value = "ready";
     } catch (err) {
@@ -78,6 +86,8 @@ export const useWikiStore = defineStore("wiki", () => {
       const body = await getNode(id);
       node.value = body.node;
       workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
       status.value = "ready";
     } catch (err) {
       fail(err);
@@ -91,6 +101,8 @@ export const useWikiStore = defineStore("wiki", () => {
       const body = await createNodeRequest(ws, input);
       node.value = body.node;
       workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
       nodes.value = [toListRow(body.node), ...nodes.value];
       status.value = "ready";
     } catch (err) {
@@ -109,6 +121,8 @@ export const useWikiStore = defineStore("wiki", () => {
       });
       node.value = body.node;
       workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
       nodes.value = nodes.value.map((row) =>
         row.id === body.node.id ? toListRow(body.node) : row,
       );
@@ -125,6 +139,38 @@ export const useWikiStore = defineStore("wiki", () => {
       const body = await linkWorkItemRequest(current.id, workItemId);
       node.value = body.node;
       workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function includeChild(childId: string): Promise<void> {
+    const current = node.value;
+    if (!current) return;
+    try {
+      const body = await includeNodeRequest(current.id, childId);
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function citeNode(toId: string): Promise<void> {
+    const current = node.value;
+    if (!current) return;
+    try {
+      const body = await refNodeRequest(current.id, toId);
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
       status.value = "ready";
     } catch (err) {
       fail(err);
@@ -140,6 +186,8 @@ export const useWikiStore = defineStore("wiki", () => {
       if (node.value?.id === body.node.id) {
         node.value = body.node;
         workItemIds.value = body.work_item_ids;
+        includes.value = body.includes ?? includes.value;
+        refs.value = body.refs ?? refs.value;
       }
       status.value = "ready";
     } catch (err) {
@@ -152,6 +200,8 @@ export const useWikiStore = defineStore("wiki", () => {
     nodes,
     node,
     workItemIds,
+    includes,
+    refs,
     status,
     error,
     loading,
@@ -160,6 +210,8 @@ export const useWikiStore = defineStore("wiki", () => {
     createNode,
     saveNode,
     linkWorkItem,
+    includeChild,
+    citeNode,
     setPinned,
   };
 });

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { handleAdmin } from "./admin.ts";
 import {
   type CatalogStore,
+  type ProjectRow,
   type TenantBundle,
   type WorkItemRow,
 } from "./catalog.ts";
@@ -21,6 +22,7 @@ const env = { APP_ORIGIN: ORIGIN } as Env;
 
 type MemoryCatalog = CatalogStore & {
   seedWorkItem(row: WorkItemRow): void;
+  seedProject(row: ProjectRow & { created_at: string }): void;
 };
 
 function unused(): never {
@@ -33,10 +35,14 @@ function stubCatalog(): CatalogStore {
     getMembership: unused,
     listMembers: unused,
     insertMembership: unused,
+    updateMembershipRole: unused,
+    deleteMembership: unused,
+    countOwners: unused,
     listProjects: unused,
     getProject: unused,
     insertProject: unused,
     updateProjectName: unused,
+    updateProjectParent: unused,
     listStages: unused,
     replaceStages: unused,
     listWorkItems: unused,
@@ -44,6 +50,7 @@ function stubCatalog(): CatalogStore {
     insertWorkItem: unused,
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
+    insertWorkspaceFor: unused,
     listOrganizations: unused,
     listWorkItemEvents: unused,
     commitWorkItemEvent: unused,
@@ -64,6 +71,7 @@ function memoryCatalog(): MemoryCatalog {
     { workspace_id: string; principal_id: string; role: "owner" | "member" }
   >();
   const workItems = new Map<string, WorkItemRow>();
+  const projects = new Map<string, ProjectRow & { created_at: string }>();
 
   function membershipKey(workspaceId: string, principalId: string): string {
     return `${workspaceId}:${principalId}`;
@@ -88,10 +96,23 @@ function memoryCatalog(): MemoryCatalog {
     },
     listMembers: unused,
     insertMembership: unused,
-    listProjects: unused,
-    getProject: unused,
-    insertProject: unused,
+    updateMembershipRole: unused,
+    deleteMembership: unused,
+    countOwners: unused,
+    async listProjects(workspaceId) {
+      return [...projects.values()]
+        .filter((p) => p.workspace_id === workspaceId)
+        .map(({ created_at: _createdAt, ...row }) => ({ ...row }));
+    },
+    async getProject(id) {
+      const row = projects.get(id);
+      return row ? { ...row } : null;
+    },
+    async insertProject(row) {
+      projects.set(row.id, { ...row });
+    },
     updateProjectName: unused,
+    updateProjectParent: unused,
     listStages: unused,
     replaceStages: unused,
     listWorkItems: unused,
@@ -104,16 +125,21 @@ function memoryCatalog(): MemoryCatalog {
     async insertTenantBundle(b) {
       organizations.set(b.organization.id, { ...b.organization });
       workspaces.set(b.workspace.id, { ...b.workspace });
+      projects.set(b.project.id, { ...b.project });
       memberships.set(
         membershipKey(b.membership.workspace_id, b.membership.principal_id),
         { ...b.membership },
       );
     },
+    insertWorkspaceFor: unused,
     listOrganizations: unused,
     listWorkItemEvents: unused,
     commitWorkItemEvent: unused,
     seedWorkItem(row) {
       workItems.set(row.id, { ...row });
+    },
+    seedProject(row) {
+      projects.set(row.id, { ...row });
     },
   };
 }
@@ -145,6 +171,10 @@ function memoryStore(): SessionStore {
     async revokeSession(id, at) {
       const row = sessions.get(id);
       if (row) sessions.set(id, { ...row, revoked_at: at });
+    },
+    async updateSessionWorkspace(id, workspaceId) {
+      const row = sessions.get(id);
+      if (row) sessions.set(id, { ...row, workspace_id: workspaceId });
     },
   };
 }
@@ -1041,6 +1071,241 @@ describe("handleWiki", () => {
       wiki,
     );
     assert.equal(forbidden.status, 403);
+  });
+
+  it("GET work-item nodes is empty then includes attached node", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    catalog.seedWorkItem(farmWorkItem(bundle, "wi-1"));
+    const empty = await handleWiki(
+      new Request(`${ORIGIN}/api/work-items/wi-1/nodes`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(empty.status, 200);
+    assert.deepEqual(await empty.json(), { nodes: [] });
+
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg", type: "note", summary: "shell" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as {
+      node: { id: string; title: string; type: string; summary: string | null };
+    };
+    await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/work-items`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ work_item_id: "wi-1" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const listed = await handleWiki(
+      new Request(`${ORIGIN}/api/work-items/wi-1/nodes`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(listed.status, 200);
+    assert.deepEqual(await listed.json(), {
+      nodes: [
+        {
+          id: node.id,
+          title: "Egg",
+          type: "note",
+          summary: "shell",
+        },
+      ],
+    });
+  });
+
+  it("POST work-item nodes is 201 then 200; other-workspace node 400; no session 401", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    catalog.seedWorkItem(farmWorkItem(bundle, "wi-1"));
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+
+    const first = await handleWiki(
+      new Request(`${ORIGIN}/api/work-items/wi-1/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ node_id: node.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(first.status, 201);
+    const second = await handleWiki(
+      new Request(`${ORIGIN}/api/work-items/wi-1/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ node_id: node.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(second.status, 200);
+
+    await wiki.insertNode({
+      id: "n-other",
+      workspace_id: "ws-other",
+      organization_id: "org-other",
+      type: "note",
+      payload_kind: "markdown",
+      title: "Away",
+      summary: null,
+      content: "",
+      blob_key: null,
+      mime_type: null,
+      byte_size: null,
+      filename: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      pinned: 0,
+    });
+    const other = await handleWiki(
+      new Request(`${ORIGIN}/api/work-items/wi-1/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ node_id: "n-other" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(other.status, 400);
+
+    const noSession = await handleWiki(
+      new Request(`${ORIGIN}/api/work-items/wi-1/nodes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ node_id: node.id }),
+      }),
+      env,
+      memoryStore(),
+      catalog,
+      wiki,
+    );
+    assert.equal(noSession.status, 401);
+  });
+
+  it("unfiltered GET list still returns a node with no links", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Loose" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const listed = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const body = (await listed.json()) as { nodes: { title: string }[] };
+    assert.ok(body.nodes.some((n) => n.title === "Loose"));
+  });
+
+  it("GET nodes ?project_id= child omits root-linked and includes child-linked", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    catalog.seedWorkItem(farmWorkItem(bundle, "wi-root"));
+    catalog.seedProject({
+      id: "proj-child",
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      parent_id: bundle.project.id,
+      name: "Barn",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    catalog.seedWorkItem({
+      ...farmWorkItem(bundle, "wi-child"),
+      project_id: "proj-child",
+    });
+
+    const rootNode = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Root note", work_item_id: "wi-root" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(rootNode.status, 201);
+    const childNode = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Child note",
+          work_item_id: "wi-child",
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(childNode.status, 201);
+
+    const filtered = await handleWiki(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes?project_id=proj-child`,
+        { headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(filtered.status, 200);
+    const body = (await filtered.json()) as { nodes: { title: string }[] };
+    assert.deepEqual(
+      body.nodes.map((n) => n.title).sort(),
+      ["Child note"],
+    );
   });
 });
 

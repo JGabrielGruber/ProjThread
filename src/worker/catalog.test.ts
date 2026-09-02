@@ -85,6 +85,26 @@ function memoryCatalog(): CatalogStore {
       memberships.set(key, { ...row });
       return "inserted";
     },
+    async updateMembershipRole(workspaceId, principalId, role) {
+      const key = membershipKey(workspaceId, principalId);
+      const row = memberships.get(key);
+      if (!row) return false;
+      memberships.set(key, { ...row, role });
+      return true;
+    },
+    async deleteMembership(workspaceId, principalId) {
+      const key = membershipKey(workspaceId, principalId);
+      if (!memberships.has(key)) return false;
+      memberships.delete(key);
+      return true;
+    },
+    async countOwners(workspaceId) {
+      let n = 0;
+      for (const row of memberships.values()) {
+        if (row.workspace_id === workspaceId && row.role === "owner") n += 1;
+      }
+      return n;
+    },
     async listProjects(workspaceId) {
       return [...projects.values()]
         .filter((p) => p.workspace_id === workspaceId)
@@ -101,6 +121,12 @@ function memoryCatalog(): CatalogStore {
       const row = projects.get(id);
       if (!row) return false;
       projects.set(id, { ...row, name });
+      return true;
+    },
+    async updateProjectParent(id, parentId) {
+      const row = projects.get(id);
+      if (!row) return false;
+      projects.set(id, { ...row, parent_id: parentId });
       return true;
     },
     async listStages(workspaceId) {
@@ -166,6 +192,9 @@ function memoryCatalog(): CatalogStore {
       memberships.set(membershipKey(b.membership.workspace_id, b.membership.principal_id), {
         ...b.membership,
       });
+    },
+    async insertWorkspaceFor() {
+      throw new Error("unused");
     },
     async listOrganizations() {
       return [...organizations.values()].map((o) => ({ id: o.id, name: o.name }));

@@ -17,6 +17,7 @@ export type SessionRow = {
   expires_at: string;
   revoked_at: string | null;
   created_at: string;
+  workspace_id: string | null;
 };
 
 export type SessionStore = {
@@ -26,6 +27,7 @@ export type SessionStore = {
   insertSession(row: SessionRow): Promise<void>;
   getSession(id: string): Promise<SessionRow | null>;
   revokeSession(id: string, at: string): Promise<void>;
+  updateSessionWorkspace(id: string, workspaceId: string): Promise<void>;
 };
 
 export async function mintSession(
@@ -51,6 +53,7 @@ export async function mintSession(
     expires_at: new Date(now.getTime() + ttlDays * MS_PER_DAY).toISOString(),
     revoked_at: null,
     created_at: createdAt,
+    workspace_id: null,
   };
   await store.insertSession(row);
   return row;
@@ -109,7 +112,7 @@ export function d1SessionStore(db: D1Database): SessionStore {
     async insertSession(row) {
       await db
         .prepare(
-          "INSERT INTO session (id, principal_id, minted_by, expires_at, revoked_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO session (id, principal_id, minted_by, expires_at, revoked_at, created_at, workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           row.id,
@@ -118,13 +121,14 @@ export function d1SessionStore(db: D1Database): SessionStore {
           row.expires_at,
           row.revoked_at,
           row.created_at,
+          row.workspace_id,
         )
         .run();
     },
     async getSession(id) {
       return db
         .prepare(
-          "SELECT id, principal_id, minted_by, expires_at, revoked_at, created_at FROM session WHERE id = ?",
+          "SELECT id, principal_id, minted_by, expires_at, revoked_at, created_at, workspace_id FROM session WHERE id = ?",
         )
         .bind(id)
         .first<SessionRow>();
@@ -133,6 +137,12 @@ export function d1SessionStore(db: D1Database): SessionStore {
       await db
         .prepare("UPDATE session SET revoked_at = ? WHERE id = ?")
         .bind(at, id)
+        .run();
+    },
+    async updateSessionWorkspace(id, workspaceId) {
+      await db
+        .prepare("UPDATE session SET workspace_id = ? WHERE id = ?")
+        .bind(workspaceId, id)
         .run();
     },
   };

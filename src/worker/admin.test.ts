@@ -29,10 +29,14 @@ function stubCatalog(): CatalogStore {
     getMembership: unused,
     listMembers: unused,
     insertMembership: unused,
+    updateMembershipRole: unused,
+    deleteMembership: unused,
+    countOwners: unused,
     listProjects: unused,
     getProject: unused,
     insertProject: unused,
     updateProjectName: unused,
+    updateProjectParent: unused,
     listStages: unused,
     replaceStages: unused,
     listWorkItems: unused,
@@ -40,6 +44,7 @@ function stubCatalog(): CatalogStore {
     insertWorkItem: unused,
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
+    insertWorkspaceFor: unused,
     listOrganizations: unused,
     listWorkItemEvents: unused,
     commitWorkItemEvent: unused,
@@ -98,10 +103,14 @@ function memoryCatalog(): CatalogStore {
     getMembership: unused,
     listMembers: unused,
     insertMembership: unused,
+    updateMembershipRole: unused,
+    deleteMembership: unused,
+    countOwners: unused,
     listProjects: unused,
     getProject: unused,
     insertProject: unused,
     updateProjectName: unused,
+    updateProjectParent: unused,
     listStages: unused,
     replaceStages: unused,
     listWorkItems: unused,
@@ -126,6 +135,7 @@ function memoryCatalog(): CatalogStore {
         { ...b.membership },
       );
     },
+    insertWorkspaceFor: unused,
     async listOrganizations() {
       return [...organizations.values()].map((o) => ({
         id: o.id,
@@ -164,6 +174,10 @@ function memoryStore(): SessionStore {
     async revokeSession(id, at) {
       const row = sessions.get(id);
       if (row) sessions.set(id, { ...row, revoked_at: at });
+    },
+    async updateSessionWorkspace(id, workspaceId) {
+      const row = sessions.get(id);
+      if (row) sessions.set(id, { ...row, workspace_id: workspaceId });
     },
   };
 }

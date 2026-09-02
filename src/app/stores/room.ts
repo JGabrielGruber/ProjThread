@@ -8,6 +8,10 @@ import type {
 } from "../models/room.ts";
 import { ApiError } from "../services/http.ts";
 import {
+  attachWorkItemNode,
+  listWorkItemNodes,
+} from "../services/wiki.ts";
+import {
   getWorkItem,
   listEvents,
   postEvent as postEventRequest,
@@ -37,6 +41,7 @@ export const useRoomStore = defineStore("room", () => {
   const events = ref<ActivityEvent[]>([]);
   const activityOnly = ref(false);
   const itemId = ref<string | null>(null);
+  const nodes = ref<{ id: string; title: string; type: string; summary: string | null }[]>([]);
   const loading = ref(false);
   let eventsLoading = false;
   let socket: WebSocket | null = null;
@@ -148,15 +153,18 @@ export const useRoomStore = defineStore("room", () => {
     if (itemId.value !== nextItemId) {
       lines.value = [];
       events.value = [];
+      nodes.value = [];
     }
     itemId.value = nextItemId;
     try {
-      const [body, payload] = await Promise.all([
+      const [body, payload, linked] = await Promise.all([
         getWorkItem(nextItemId),
         listEvents(nextItemId),
+        listWorkItemNodes(nextItemId),
       ]);
       item.value = asRoomItem(body);
       events.value = Array.isArray(payload.events) ? payload.events : [];
+      nodes.value = linked.nodes ?? [];
       connect();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -174,6 +182,17 @@ export const useRoomStore = defineStore("room", () => {
     if (!trimmed) return;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: "chat", body }));
+  }
+
+  async function attachNode(nodeId: string): Promise<void> {
+    const id = itemId.value;
+    if (!id) return;
+    try {
+      const body = await attachWorkItemNode(id, nodeId);
+      nodes.value = body.nodes ?? [];
+    } catch {
+      status.value = "error";
+    }
   }
 
   async function postEvent(payload: {
@@ -214,10 +233,12 @@ export const useRoomStore = defineStore("room", () => {
     item,
     lines,
     events,
+    nodes,
     activityOnly,
     open,
     send,
     postEvent,
+    attachNode,
     close,
   };
 });

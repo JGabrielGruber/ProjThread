@@ -1,28 +1,22 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
 import Modal from "../components/Modal.vue";
 import PtButton from "../components/PtButton.vue";
 import PtField from "../components/PtField.vue";
 import { useBoardStore, type WorkItem } from "../stores/board.ts";
+import { useSessionStore } from "../stores/session.ts";
 
-const route = useRoute();
+const session = useSessionStore();
 const board = useBoardStore();
 const draft = ref("");
 const addOpen = ref(false);
 const moveReason = ref("");
 const pendingMove = ref<{ item: WorkItem; to: string } | null>(null);
 
-function queryString(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
-}
-
 watch(
-  () => [queryString(route.query.workspace), queryString(route.query.project)],
-  ([workspace, project]) => {
-    if (workspace && project) {
-      void board.loadBoard(workspace, project);
-    }
+  () => session.workspaceId,
+  (workspace) => {
+    if (workspace) void board.loadBoard(workspace);
   },
   { immediate: true },
 );
@@ -133,10 +127,6 @@ async function confirmMove(): Promise<void> {
           :to="{
             name: 'room',
             params: { itemId: item.id },
-            query: {
-              workspace: route.query.workspace,
-              project: route.query.project,
-            },
           }"
         >
           {{ item.title }}

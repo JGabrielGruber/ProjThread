@@ -44,7 +44,8 @@ export default {
 
     if (
       url.pathname.startsWith("/api/nodes") ||
-      /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname)
+      /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname) ||
+      /^\/api\/work-items\/[^/]+\/nodes$/.test(url.pathname)
     ) {
       return handleWiki(request, env, store, catalog, wiki);
     }
@@ -52,7 +53,8 @@ export default {
     if (
       url.pathname.startsWith("/api/workspaces") ||
       url.pathname.startsWith("/api/work-items") ||
-      url.pathname.startsWith("/api/projects")
+      url.pathname.startsWith("/api/projects") ||
+      url.pathname === "/api/organizations"
     ) {
       return handleCatalog(request, env, store, catalog);
     }

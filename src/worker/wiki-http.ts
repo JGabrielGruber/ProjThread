@@ -1,5 +1,6 @@
 import { newId } from "../lib/id.ts";
 import { sessionIdFromRequest } from "../lib/session-id.ts";
+import { descendantIds } from "../lib/project-tree.ts";
 import { wouldCycleIncludes } from "../lib/node-rel.ts";
 import {
   rejectContent,
@@ -10,7 +11,7 @@ import {
 import type { CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import { resolveSession, type SessionStore } from "./session.ts";
-import type { NodeRow, NodeType, WikiStore } from "./wiki.ts";
+import type { NodeListRow, NodeRow, NodeType, WikiStore } from "./wiki.ts";
 
 const NODE_TYPES = new Set<NodeType>([
   "note",
@@ -36,6 +37,17 @@ export async function handleWiki(
   }
 
   const url = new URL(request.url);
+  const workItemNodes = matchWorkItemNodes(url.pathname);
+  if (workItemNodes) {
+    return handleWorkItemNodes(
+      request,
+      workItemNodes.id,
+      principal.id,
+      catalog,
+      wiki,
+    );
+  }
+
   const workspaceId = matchWorkspaceNodes(url.pathname);
   if (workspaceId) {
     const membership = await catalog.getMembership(workspaceId, principal.id);
@@ -43,7 +55,16 @@ export async function handleWiki(
       return Response.json({ error: "forbidden" }, { status: 403 });
     }
     if (request.method === "GET") {
-      const nodes = await wiki.listNodes(workspaceId);
+      const projectId = url.searchParams.get("project_id");
+      let projectIds: string[] | undefined;
+      if (projectId) {
+        const forest = await catalog.listProjects(workspaceId);
+        projectIds = [...descendantIds(projectId, forest)];
+      }
+      let nodes = await wiki.listNodes(workspaceId, projectIds);
+      if (projectIds) {
+        nodes = await filterNodesByProjects(nodes, projectIds, wiki, catalog);
+      }
       return Response.json({ nodes });
     }
     if (request.method === "POST") {
@@ -334,6 +355,80 @@ function parseOptionalId(
   }
   if (typeof body[key] !== "string" || body[key] === "") return false;
   return body[key];
+}
+
+async function filterNodesByProjects(
+  nodes: NodeListRow[],
+  projectIds: string[],
+  wiki: WikiStore,
+  catalog: CatalogStore,
+): Promise<NodeListRow[]> {
+  const allowed = new Set(projectIds);
+  const out: NodeListRow[] = [];
+  for (const node of nodes) {
+    const linkedProjects = await wiki.listNodeProjectIds(node.id);
+    if (linkedProjects.some((id) => allowed.has(id))) {
+      out.push(node);
+      continue;
+    }
+    const workItemIds = await wiki.listNodeWorkItemIds(node.id);
+    let hit = false;
+    for (const workItemId of workItemIds) {
+      const item = await catalog.getWorkItem(workItemId);
+      if (item && allowed.has(item.project_id)) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) out.push(node);
+  }
+  return out;
+}
+
+async function handleWorkItemNodes(
+  request: Request,
+  workItemId: string,
+  principalId: string,
+  catalog: CatalogStore,
+  wiki: WikiStore,
+): Promise<Response> {
+  const item = await catalog.getWorkItem(workItemId);
+  if (!item) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+  const membership = await catalog.getMembership(
+    item.workspace_id,
+    principalId,
+  );
+  if (!membership) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (request.method === "GET") {
+    const nodes = await wiki.listNodesForWorkItem(workItemId);
+    return Response.json({ nodes });
+  }
+  if (request.method !== "POST") {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+  const body = await readJson(request);
+  if (!isRecord(body) || typeof body.node_id !== "string" || !body.node_id) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const node = await wiki.getNode(body.node_id);
+  if (!node || node.workspace_id !== item.workspace_id) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const result = await wiki.linkNodeWorkItem(node.id, workItemId);
+  return Response.json(
+    { nodes: await wiki.listNodesForWorkItem(workItemId) },
+    { status: result === "inserted" ? 201 : 200 },
+  );
+}
+
+function matchWorkItemNodes(pathname: string): { id: string } | null {
+  const match = /^\/api\/work-items\/([^/]+)\/nodes$/.exec(pathname);
+  if (!match?.[1]) return null;
+  return { id: match[1] };
 }
 
 function matchWorkspaceNodes(pathname: string): string | null {

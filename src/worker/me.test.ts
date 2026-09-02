@@ -31,10 +31,14 @@ function memoryCatalog(
     getMembership: unused,
     listMembers: unused,
     insertMembership: unused,
+    updateMembershipRole: unused,
+    deleteMembership: unused,
+    countOwners: unused,
     listProjects: unused,
     getProject: unused,
     insertProject: unused,
     updateProjectName: unused,
+    updateProjectParent: unused,
     listStages: unused,
     replaceStages: unused,
     listWorkItems: unused,
@@ -42,6 +46,7 @@ function memoryCatalog(
     insertWorkItem: unused,
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
+    insertWorkspaceFor: unused,
     listOrganizations: unused,
     listWorkItemEvents: unused,
     commitWorkItemEvent: unused,
@@ -66,7 +71,7 @@ function memoryStore(): SessionStore {
       return [...principals.values()];
     },
     async insertSession(row) {
-      sessions.set(row.id, { ...row });
+      sessions.set(row.id, { ...row, workspace_id: row.workspace_id ?? null });
     },
     async getSession(id) {
       const row = sessions.get(id);
@@ -75,6 +80,10 @@ function memoryStore(): SessionStore {
     async revokeSession(id, at) {
       const row = sessions.get(id);
       if (row) sessions.set(id, { ...row, revoked_at: at });
+    },
+    async updateSessionWorkspace(id, workspaceId) {
+      const row = sessions.get(id);
+      if (row) sessions.set(id, { ...row, workspace_id: workspaceId });
     },
   };
 }
@@ -148,7 +157,11 @@ describe("handleMe", () => {
       memoryCatalog(),
     );
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { principal, memberships: [] });
+    assert.deepEqual(await res.json(), {
+      principal,
+      memberships: [],
+      workspace_id: null,
+    });
   });
 
   it("returns the principal for a live Bearer session", async () => {
@@ -163,7 +176,11 @@ describe("handleMe", () => {
       memoryCatalog(),
     );
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { principal, memberships: [] });
+    assert.deepEqual(await res.json(), {
+      principal,
+      memberships: [],
+      workspace_id: null,
+    });
   });
 
   it("returns 401 for a bad Bearer even when the cookie is live", async () => {
@@ -204,7 +221,84 @@ describe("handleMe", () => {
     assert.deepEqual(await res.json(), {
       principal,
       memberships: [membership],
+      workspace_id: null,
     });
+  });
+
+  it("PATCH binds workspace_id when it is a membership of this principal", async () => {
+    const store = memoryStore();
+    const { principal, cookie } = await mintCookie(store);
+    const membership: Membership = {
+      organization_id: "org_1",
+      organization_name: "Acme",
+      workspace_id: "ws_1",
+      workspace_name: "Default",
+      role: "owner",
+    };
+    const catalog = memoryCatalog(new Map([[principal.id, [membership]]]));
+    const patched = await handleMe(
+      new Request(`${ORIGIN}/api/me`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ workspace_id: "ws_1" }),
+      }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(patched.status, 200);
+    assert.deepEqual(await patched.json(), {
+      principal,
+      memberships: [membership],
+      workspace_id: "ws_1",
+    });
+    const later = await handleMe(
+      new Request(`${ORIGIN}/api/me`, { headers: { cookie } }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(later.status, 200);
+    assert.deepEqual(await later.json(), {
+      principal,
+      memberships: [membership],
+      workspace_id: "ws_1",
+    });
+  });
+
+  it("PATCH outsider workspace is 400; no session is 401", async () => {
+    const store = memoryStore();
+    const { principal, cookie } = await mintCookie(store);
+    const membership: Membership = {
+      organization_id: "org_1",
+      organization_name: "Acme",
+      workspace_id: "ws_1",
+      workspace_name: "Default",
+      role: "owner",
+    };
+    const catalog = memoryCatalog(new Map([[principal.id, [membership]]]));
+    const outsider = await handleMe(
+      new Request(`${ORIGIN}/api/me`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ workspace_id: "ws_other" }),
+      }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(outsider.status, 400);
+    const noSession = await handleMe(
+      new Request(`${ORIGIN}/api/me`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workspace_id: "ws_1" }),
+      }),
+      env,
+      store,
+      catalog,
+    );
+    assert.equal(noSession.status, 401);
   });
 
   it("returns 401 after the session is revoked", async () => {

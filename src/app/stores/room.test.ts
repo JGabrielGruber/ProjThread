@@ -105,6 +105,9 @@ describe("room store", () => {
     if (url.endsWith("/events")) {
       return Response.json({ events: extra?.events ?? [] });
     }
+    if (url.endsWith("/nodes")) {
+      return Response.json({ nodes: [] });
+    }
     return Response.json(item);
   }
 
@@ -121,11 +124,12 @@ describe("room store", () => {
     };
     const store = useRoomStore();
     await store.open("wi-1");
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
     const urls = calls.map((c) => c.url).sort();
     assert.deepEqual(urls, [
       "/api/work-items/wi-1",
       "/api/work-items/wi-1/events",
+      "/api/work-items/wi-1/nodes",
     ]);
     assert.equal(calls[0].credentials, "include");
     assert.equal(calls[1].credentials, "include");
@@ -147,7 +151,7 @@ describe("room store", () => {
     const second = store.open("wi-1");
     release();
     await Promise.all([first, second]);
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
   });
 
   it("401 => status no_session", async () => {

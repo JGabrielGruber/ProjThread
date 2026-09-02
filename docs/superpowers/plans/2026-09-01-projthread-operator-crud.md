@@ -140,9 +140,9 @@ Files: `migrations/0007_session_workspace.sql`, `src/worker/session.ts`, `src/wo
 ALTER TABLE session ADD COLUMN workspace_id TEXT REFERENCES workspace(id);
 ```
 
-- [ ] `GET /api/me` 200 includes `workspace_id: null` for a fresh session.
-- [ ] `PATCH /api/me` `{ workspace_id: <membership> }` 200 and later GET returns that id.
-- [ ] `PATCH` outsider workspace `400`. No session `401`. GET still `401` without cookie/Bearer.
+- [x] `GET /api/me` 200 includes `workspace_id: null` for a fresh session.
+- [x] `PATCH /api/me` `{ workspace_id: <membership> }` 200 and later GET returns that id.
+- [x] `PATCH` outsider workspace `400`. No session `401`. GET still `401` without cookie/Bearer.
 
 `SessionRow.workspace_id: string | null`. `insertSession` writes `null`. `getSession` SELECTs the column. `updateSessionWorkspace(id, workspaceId)`.
 
@@ -156,9 +156,9 @@ Run: `node --test --experimental-strip-types src/worker/me.test.ts` — fail the
 
 Files: `src/worker/catalog.ts`, `catalog-http.ts`, `index.ts`, `catalog-http.test.ts`.
 
-- [ ] Session `POST /api/organizations` `{ name: "Keep" }` 201; membership owner is the **caller**, not a new principal; stages minted; one root project.
-- [ ] Empty name `400`. No session `401`.
-- [ ] Admin `POST /api/admin/organizations` still creates a **new** principal (existing tests stay green).
+- [x] Session `POST /api/organizations` `{ name: "Keep" }` 201; membership owner is the **caller**, not a new principal; stages minted; one root project.
+- [x] Empty name `400`. No session `401`.
+- [x] Admin `POST /api/admin/organizations` still creates a **new** principal (existing tests stay green).
 
 `insertWorkspaceFor(principalId, name)`: org + workspace + root project + default stages + membership owner. Do not insert principal.
 
@@ -174,10 +174,10 @@ Files: `catalog.ts`, `catalog-http.ts`, `catalog-http.test.ts`.
 
 Match `PATCH|DELETE /api/workspaces/:ws/members/:principalId` (principalId one segment). Caller `getMembership` role must be `owner`, else `403`.
 
-- [ ] Owner PATCH `{ role: "member" }` on another owner when a second owner exists → 200.
-- [ ] PATCH/DELETE the sole owner → `400` `{ error: "last_owner" }`.
-- [ ] Member caller → `403`.
-- [ ] DELETE other member → `204`; GET members no longer lists them.
+- [x] Owner PATCH `{ role: "member" }` on another owner when a second owner exists → 200.
+- [x] PATCH/DELETE the sole owner → `400` `{ error: "last_owner" }`.
+- [x] Member caller → `403`.
+- [x] DELETE other member → `204`; GET members no longer lists them.
 
 `updateMembershipRole`, `deleteMembership`, `countOwners(workspaceId)`.
 
@@ -196,9 +196,9 @@ Today PATCH with `parent_id` is `400`. Change:
 - `parent_id: string` → must be same workspace, `wouldCycle` false.
 - Name omitted → keep name.
 
-- [ ] Existing test “PATCH project with parent_id is 400” **becomes** 200 when parent is a valid sibling/root and cycle-checked.
-- [ ] Cycle (parent = self or descendant) `400`.
-- [ ] Name-only PATCH still 200 (existing rename test).
+- [x] Existing test “PATCH project with parent_id is 400” **becomes** 200 when parent is a valid sibling/root and cycle-checked.
+- [x] Cycle (parent = self or descendant) `400`.
+- [x] Name-only PATCH still 200 (existing rename test).
 
 Run: catalog-http tests.
 
@@ -216,8 +216,8 @@ if (/^\/api\/work-items\/[^/]+\/nodes$/.test(url.pathname)) {
 }
 ```
 
-- [ ] GET empty `{ nodes: [] }`. After `POST /api/nodes/:id/work-items`, GET work-item nodes includes `{ id, title, type, summary }`.
-- [ ] POST `{ node_id }` 201 then 200. Other-workspace node `400`. No session `401`.
+- [x] GET empty `{ nodes: [] }`. After `POST /api/nodes/:id/work-items`, GET work-item nodes includes `{ id, title, type, summary }`.
+- [x] POST `{ node_id }` 201 then 200. Other-workspace node `400`. No session `401`.
 
 `listNodesForWorkItem`, reuse `linkNodeWorkItem`.
 
@@ -229,8 +229,8 @@ Run: `node --test --experimental-strip-types src/worker/wiki-http.test.ts`.
 
 Files: `wiki.ts` `listNodes(workspaceId, projectIds?: string[])`, `wiki-http.ts` GET, `wiki-http.test.ts`. `descendantIds` on `listProjects`.
 
-- [ ] Unfiltered GET still returns a node with no links.
-- [ ] `?project_id=<child>` omits a node only linked (via `node_work_item`) to a card on the **root**, includes a node linked to a card on the child.
+- [x] Unfiltered GET still returns a node with no links.
+- [x] `?project_id=<child>` omits a node only linked (via `node_work_item`) to a card on the **root**, includes a node linked to a card on the child.
 
 `node_project` rows also match (SQL `OR`). No PWA writer for `node_project` this slice.
 
@@ -244,8 +244,8 @@ Files: `src/worker/mcp.ts`, `mcp.test.ts`.
 
 `workspaceId`: after loadMe, if no explicit arg and `typeof me.workspace_id === "string"` and it is in memberships, return it (even if memberships.length > 1).
 
-- [ ] Two memberships, session PATCH to A, `session_briefing` without `workspace_id` briefings A (not `workspace_required`).
-- [ ] Instructions last sentence is the locked string.
+- [x] Two memberships, session PATCH to A, `session_briefing` without `workspace_id` briefings A (not `workspace_required`).
+- [x] Instructions last sentence is the locked string.
 
 Existing one-membership and two-memberships-unbound tests stay: unbound + two still `workspace_required`.
 
@@ -257,12 +257,12 @@ Run: `node --test --experimental-strip-types src/worker/mcp.test.ts`.
 
 Files: `src/app/models/session.ts`, `services/session.ts`, `stores/session.ts`, `session.test.ts`, `App.vue`, pages that copy `workspace`/`project` into `router` query.
 
-- [ ] `getMe` type includes `workspace_id: string | null`. `patchMe({ workspace_id })`.
-- [ ] Store: `workspaceId`. `loadMe` sets it. If `null` and `memberships[0]`, `patchMe` that id then set (one extra fetch). Single-flight still on `loadMe`.
-- [ ] `App.vue`: **delete** `fillMissingQuery` and `workspace`/`project` on nav `query`. Nav `replace({ name })` only. Wiki keeps `node` on wiki routes only.
-- [ ] Kanban/wiki/config/room load from `session.workspaceId`, not `route.query.workspace`.
-- [ ] Room / kanban links: `{ name: "room", params: { itemId } }` with **no** place query.
-- [ ] Store tests: GET body with `workspace_id`; auto-PATCH when null.
+- [x] `getMe` type includes `workspace_id: string | null`. `patchMe({ workspace_id })`.
+- [x] Store: `workspaceId`. `loadMe` sets it. If `null` and `memberships[0]`, `patchMe` that id then set (one extra fetch). Single-flight still on `loadMe`.
+- [x] `App.vue`: **delete** `fillMissingQuery` and `workspace`/`project` on nav `query`. Nav `replace({ name })` only. Wiki keeps `node` on wiki routes only.
+- [x] Kanban/wiki/config/room load from `session.workspaceId`, not `route.query.workspace`.
+- [x] Room / kanban links: `{ name: "room", params: { itemId } }` with **no** place query.
+- [x] Store tests: GET body with `workspace_id`; auto-PATCH when null.
 
 Picker UI can wait for Task 10; store must be bound first.
 
@@ -290,10 +290,10 @@ No Vue tests. Browser smoke in Task 12.
 
 Files: `services/catalog.ts`, `stores/config.ts`, `config.test.ts`, `pages/ConfigPage.vue`.
 
-- [ ] `patchMember(ws, principalId, role)`, `deleteMember(ws, principalId)`, `createOrganization(name)`, `patchProject(id, { name?, parent_id? })`.
-- [ ] Store: `removeMember`, `setRole`, `createWorkspace` (POST org then `session.patchMe` + `loadMe`). Reparent control: parent select on each project (existing rename stays).
-- [ ] Owner-only buttons still hit the API; `403`/`last_owner` → `status = "error"`.
-- [ ] Tests: PATCH/DELETE URLs; POST `/api/organizations`.
+- [x] `patchMember(ws, principalId, role)`, `deleteMember(ws, principalId)`, `createOrganization(name)`, `patchProject(id, { name?, parent_id? })`.
+- [x] Store: `removeMember`, `setRole`, `createWorkspace` (POST org then `session.patchMe` + `loadMe`). Reparent control: parent select on each project (existing rename stays).
+- [x] Owner-only buttons still hit the API; `403`/`last_owner` → `status = "error"`.
+- [x] Tests: PATCH/DELETE URLs; POST `/api/organizations`.
 
 Run: `src/app/stores/config.test.ts`.
 
@@ -319,9 +319,9 @@ Browser (wrangler + Farm session): picker if two workspaces (create one in Confi
 
 ### Task 13: Land status
 
-- [ ] STATUS / AGENTS / spec session row / index **Now** as “STATUS.md after this slice”.
-- [ ] `npm test` green.
-- [ ] Do not deploy unless José asks. Remote D1 has no `0007` until then.
+- [x] STATUS / AGENTS / spec session row / index **Now** as “STATUS.md after this slice”.
+- [x] `npm test` green.
+- [x] Do not deploy unless José asks. Remote D1 has no `0007` until then.
 
 ---
 

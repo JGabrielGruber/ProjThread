@@ -36,14 +36,59 @@ describe("session store", () => {
     ];
     globalThis.fetch = async (input, init) => {
       assert.equal(String(input), "/api/me");
+      assert.equal(init?.method ?? "GET", "GET");
       assert.equal(init?.credentials, "include");
-      return Response.json({ principal, memberships });
+      return Response.json({
+        principal,
+        memberships,
+        workspace_id: "w1",
+      });
     };
     const store = useSessionStore();
     await store.loadMe();
     assert.deepEqual(store.principal, principal);
     assert.deepEqual(store.memberships, memberships);
+    assert.equal(store.workspaceId, "w1");
     assert.equal(store.loaded, true);
+  });
+
+  it("loadMe PATCHes memberships[0] when workspace_id is null", async () => {
+    const principal = { id: "p1", type: "human", display_name: "Ada" };
+    const memberships = [
+      {
+        organization_id: "o1",
+        organization_name: "Farm",
+        workspace_id: "w1",
+        workspace_name: "Farm",
+        role: "owner",
+      },
+    ];
+    const calls: { method: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), "/api/me");
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      calls.push({ method, body });
+      if (method === "PATCH") {
+        return Response.json({
+          principal,
+          memberships,
+          workspace_id: "w1",
+        });
+      }
+      return Response.json({
+        principal,
+        memberships,
+        workspace_id: null,
+      });
+    };
+    const store = useSessionStore();
+    await store.loadMe();
+    assert.equal(store.workspaceId, "w1");
+    assert.deepEqual(calls, [
+      { method: "GET", body: null },
+      { method: "PATCH", body: { workspace_id: "w1" } },
+    ]);
   });
 
   it("second loadMe while in-flight does not call fetch twice", async () => {

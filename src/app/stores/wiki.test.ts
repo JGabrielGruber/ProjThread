@@ -240,4 +240,40 @@ describe("wiki store", () => {
     assert.deepEqual(patches[0]?.body, { pinned: true });
     assert.equal(store.nodes[0]?.pinned, 1);
   });
+
+  it("loadList with projectId adds project_id query", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = async (input) => {
+      urls.push(String(input));
+      return Response.json({ nodes: [] });
+    };
+    const store = useWikiStore();
+    await store.loadList("ws1", "proj-child");
+    assert.equal(urls[0], "/api/workspaces/ws1/nodes?project_id=proj-child");
+  });
+
+  it("openNode keeps includes and refs", async () => {
+    globalThis.fetch = async () =>
+      Response.json({
+        node: {
+          id: "n1",
+          workspace_id: "ws1",
+          organization_id: "o1",
+          type: "note",
+          payload_kind: "markdown",
+          title: "Plan",
+          summary: null,
+          content: "# Hi",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        work_item_ids: [],
+        includes: [{ id: "n2", title: "Part", position: 0 }],
+        refs: [{ id: "n3", title: "Cite" }],
+      });
+    const store = useWikiStore();
+    await store.openNode("n1");
+    assert.deepEqual(store.includes, [{ id: "n2", title: "Part", position: 0 }]);
+    assert.deepEqual(store.refs, [{ id: "n3", title: "Cite" }]);
+  });
 });

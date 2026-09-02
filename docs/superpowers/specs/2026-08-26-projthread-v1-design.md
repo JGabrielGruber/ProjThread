@@ -104,7 +104,7 @@ Same chrome on **kanban, wiki, and room** (the card detail). Config can stay a s
 - **Project** is a forest **filter**, not a session claim and not required in the URL. Unfiltered / root = whole workspace. A child = that node and descendants (board already lists that way). Filing a card still needs `project_id` on the row.
 - **Desktop:** project tree on the **right**. Left rail stays app nav. Wiki read keeps the measure; the tree does not eat the page. **Not** a graph canvas.
 - **Mobile:** no second rail. Expandable **filters** under the compact nav; height follows content up to ~**80%** of the viewport; collapse to read/chat.
-- **Room** also lists **nodes of this work item** (`node_work_item`, reverse of wiki attach). Wiki density on the card, not a second wiki in Activity. HTTP today is node→items only; reverse list is missing.
+- **Room** also lists **nodes of this work item** (`node_work_item`, reverse of wiki attach). Wiki density on the card, not a second wiki in Activity. HTTP: `GET`/`POST /api/work-items/:id/nodes`.
 
 Local store hydration (keep last payload, refresh from origin, ETag) stays a later slice. Graph canvas stays an absence.
 
@@ -113,8 +113,8 @@ Local store hydration (keep last payload, refresh from origin, ETag) stays a lat
 Order (each a plan STATUS names; do not start the next until it does):
 
 1. **Structure** — routes, pages, components, models, services; extract primitives from current screens; **no new product CRUD**.
-2. **Operator CRUD** — Workspace picker + bind workspace on the session (see **Stage chrome**). Config completeness (remove member, PATCH role; project reparent; project archive/delete if HTTP is added; owner picker — `owner_changed` already exists). Card archive/delete only with HTTP. Wiki: outline/cites and attach chrome; room: nodes of this card (reverse attach; add HTTP if missing); node delete only with HTTP. Workspace create in the PWA (today only `POST /api/admin/organizations`). Project tree as filter chrome (right / mobile filters). Stage **keys** stay the minted `backlog` / `doing` / `done` unless a later spec opens add/delete keys. Labels/order already edit.
-3. **Empty tenant** — create a workspace the operator will keep, then drop Farm seed / remote D1 is ops. Not before (2) can create that workspace.
+2. **Operator CRUD** — **landed** (plan 16). Workspace on session; project tree filter; Config member role/remove, reparent, workspace create; owner picker; reverse attach; wiki outline/cites. Card/node/project archive/delete still only with HTTP (not added).
+3. **Empty tenant** — create a workspace the operator will keep, then drop Farm seed / remote D1 is ops.
 4. **Config MCP** — Bot members/projects/stages. After human setup.
 
 **Ops (not plans):** deploy briefing pins + remote `0006`; reset Grok Bot memory; custom-domain Deploy stays parked until a domain exists.
@@ -192,8 +192,8 @@ Text ids (ULID). Timestamps ISO-8601. Tenant-scoped tables carry `organization_i
 ```sql
 -- principals, sessions, membership
 principal(id, type, display_name, created_at)
-session(id, principal_id, minted_by, expires_at, revoked_at, created_at)
-  -- later: workspace_id (last place; not project)
+session(id, principal_id, minted_by, expires_at, revoked_at, created_at, workspace_id)
+  -- workspace_id is last place (not project)
 organization(id, name, created_at)
 workspace(id, organization_id, name, created_at)
 membership(workspace_id, principal_id, role)  -- owner | member
@@ -308,7 +308,7 @@ Plan 14 shipped:
 
 - `node.pinned` (`0` \| `1`). Human toggles in PWA wiki. Cap 10 on `session_briefing` as `{ id, title, type, summary }` (no bodies).
 - Cold bot: briefing, then `wiki_read` the pins. Do not encode workspace process in a Grok skill.
-- Config MCP, empty-tenant, and dropping Farm D1 stay later (see **PWA product**). PWA outline/attachment chrome waits on operator CRUD, after structure.
+- Config MCP, empty-tenant, and dropping Farm D1 stay later (see **PWA product**). Operator CRUD landed locally.
 
 ## Parked: node edges
 

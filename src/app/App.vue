@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ProjectTree from "./components/ProjectTree.vue";
+import PtButton from "./components/PtButton.vue";
+import PtField from "./components/PtField.vue";
 import Toast from "./components/Toast.vue";
-import { listProjects } from "./services/catalog.ts";
 import { useBoardStore } from "./stores/board.ts";
 import { useConfigStore } from "./stores/config.ts";
 import { useRoomStore } from "./stores/room.ts";
-import { useSessionStore, type Membership } from "./stores/session.ts";
+import { useSessionStore } from "./stores/session.ts";
 import { useWikiStore } from "./stores/wiki.ts";
 
 type ThemeMode = "system" | "dark" | "light";
@@ -57,22 +59,26 @@ onMounted(() => {
   void session.loadMe();
 });
 
-function queryString(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
-}
+const filtersOpen = ref(false);
+const workspaceDraft = computed(() => session.workspaceId ?? "");
 
-const workspaceQuery = computed(() => queryString(route.query.workspace));
-const projectQuery = computed(() => queryString(route.query.project));
-const hasBoardQuery = computed(
-  () => Boolean(workspaceQuery.value) && Boolean(projectQuery.value),
+const showTree = computed(
+  () =>
+    Boolean(session.workspaceId) &&
+    (route.name === "kanban" || route.name === "wiki" || route.name === "room"),
 );
 
-const place = computed(() => {
-  const query: Record<string, string> = {};
-  if (workspaceQuery.value) query.workspace = workspaceQuery.value;
-  if (projectQuery.value) query.project = projectQuery.value;
-  return query;
-});
+watch(
+  () => session.workspaceId,
+  (id) => {
+    if (id) void board.loadBoard(id);
+  },
+);
+
+async function onWorkspaceChange(id: string): Promise<void> {
+  if (!id || id === session.workspaceId) return;
+  await session.bindWorkspace(id);
+}
 
 const kanbanNav = computed(() => route.name === "kanban");
 const wikiNav = computed(() => route.name === "wiki");
@@ -109,7 +115,7 @@ const toast = computed(() => {
     }
     return { message: "", tone: "info" as const };
   }
-  if (hasBoardQuery.value) {
+  if (session.workspaceId) {
     if (board.status === "loading") return { message: "Loading", tone: "info" as const };
     if (board.status === "error") {
       return { message: "Could not load board", tone: "error" as const };
@@ -119,64 +125,16 @@ const toast = computed(() => {
 });
 
 async function openBoard(): Promise<void> {
-  await router.replace({ name: "kanban", query: place.value });
+  await router.replace({ name: "kanban" });
 }
 
 async function openWiki(): Promise<void> {
-  await router.replace({ name: "wiki", query: place.value });
+  await router.replace({ name: "wiki" });
 }
 
 async function openConfig(): Promise<void> {
-  await router.replace({ name: "config", query: place.value });
+  await router.replace({ name: "config" });
 }
-
-async function fillMissingQuery(memberships: Membership[]): Promise<void> {
-  const workspaceMissing = !workspaceQuery.value;
-  const projectMissing = !projectQuery.value;
-  if (!workspaceMissing && !projectMissing) return;
-  if (memberships.length === 0) return;
-
-  const workspaceId = workspaceQuery.value ?? memberships[0].workspace_id;
-  let projectId = projectQuery.value;
-  if (!projectId) {
-    try {
-      const body = await listProjects(workspaceId);
-      const root = body.projects.find((p) => p.parent_id == null);
-      if (!root) return;
-      projectId = root.id;
-    } catch {
-      return;
-    }
-  }
-
-  const query = { ...route.query };
-  if (workspaceMissing) query.workspace = workspaceId;
-  if (projectMissing) query.project = projectId;
-  if (
-    query.workspace === route.query.workspace &&
-    query.project === route.query.project
-  ) {
-    return;
-  }
-  await router.replace({ query });
-}
-
-watch(
-  () => [
-    session.loaded,
-    session.principal,
-    session.memberships,
-    workspaceQuery.value,
-    projectQuery.value,
-  ],
-  () => {
-    if (!session.loaded || !session.principal || session.memberships.length === 0) {
-      return;
-    }
-    void fillMissingQuery(session.memberships);
-  },
-  { immediate: true },
-);
 </script>
 
 <template>
@@ -186,6 +144,29 @@ watch(
     <section v-else class="shell">
       <nav class="rail" aria-label="App">
         <p class="who">{{ session.principal.display_name }}</p>
+        <PtField
+          as="select"
+          label="Workspace"
+          class="place"
+          :model-value="workspaceDraft"
+          @update:model-value="onWorkspaceChange(String($event))"
+        >
+          <option
+            v-for="row in session.memberships"
+            :key="row.workspace_id"
+            :value="row.workspace_id"
+          >
+            {{ row.workspace_name }}
+          </option>
+        </PtField>
+        <PtButton
+          v-if="showTree"
+          variant="compact"
+          class="filters-toggle"
+          @click="filtersOpen = !filtersOpen"
+        >
+          Filters
+        </PtButton>
         <button
           type="button"
           class="nav-btn"
@@ -218,8 +199,25 @@ watch(
         </button>
       </nav>
       <div class="stage">
+        <div
+          v-if="showTree && filtersOpen"
+          class="filters"
+        >
+          <ProjectTree
+            :projects="board.projects"
+            :selected-id="board.filterProjectId"
+            @select="board.setFilter"
+          />
+        </div>
         <RouterView />
       </div>
+      <aside v-if="showTree" class="tree" aria-label="Project filter">
+        <ProjectTree
+          :projects="board.projects"
+          :selected-id="board.filterProjectId"
+          @select="board.setFilter"
+        />
+      </aside>
     </section>
     <Toast :message="toast.message" :tone="toast.tone" />
   </main>
@@ -243,6 +241,10 @@ main {
   flex: 1;
   min-height: 0;
   height: 100%;
+}
+
+.shell:has(.tree) {
+  grid-template-columns: 13rem minmax(0, 1fr) 13rem;
 }
 
 h1 {
@@ -270,6 +272,31 @@ h1 {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+}
+
+.tree {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem;
+  border-left: 1px solid var(--border);
+}
+
+.filters {
+  display: none;
+  max-height: 80dvh;
+  overflow: auto;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.filters-toggle {
+  display: none;
+}
+
+.place {
+  width: 100%;
+  margin-bottom: 0.5rem;
 }
 
 .stage > * {
@@ -313,9 +340,27 @@ h1 {
 }
 
 @media (max-width: 48rem) {
-  .shell {
+  .shell,
+  .shell:has(.tree) {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .tree {
+    display: none;
+  }
+
+  .filters {
+    display: block;
+  }
+
+  .filters-toggle {
+    display: inline-flex;
+  }
+
+  .place {
+    width: auto;
+    margin: 0 0.5rem 0 0;
   }
 
   .rail {

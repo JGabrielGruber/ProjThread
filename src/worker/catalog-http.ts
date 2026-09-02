@@ -1,6 +1,6 @@
 import { newId } from "../lib/id.ts";
 import { sessionIdFromRequest } from "../lib/session-id.ts";
-import { descendantIds } from "../lib/project-tree.ts";
+import { descendantIds, wouldCycle } from "../lib/project-tree.ts";
 import { rejectActivityBody } from "../room/tape.ts";
 import type {
   CatalogStore,
@@ -43,6 +43,21 @@ export async function handleCatalog(
   }
 
   const url = new URL(request.url);
+  if (url.pathname === "/api/organizations" && request.method === "POST") {
+    return createOrganization(request, principal.id, catalog);
+  }
+
+  const memberItem = matchWorkspaceMemberPath(url.pathname);
+  if (memberItem) {
+    return mutateWorkspaceMember(
+      request,
+      memberItem.workspaceId,
+      memberItem.principalId,
+      principal.id,
+      catalog,
+    );
+  }
+
   const workspaceRoute = matchWorkspaceResource(url.pathname);
   if (workspaceRoute) {
     const membership = await catalog.getMembership(
@@ -447,6 +462,74 @@ async function addWorkspaceMember(
   );
 }
 
+async function mutateWorkspaceMember(
+  request: Request,
+  workspaceId: string,
+  targetPrincipalId: string,
+  callerId: string,
+  catalog: CatalogStore,
+): Promise<Response> {
+  const caller = await catalog.getMembership(workspaceId, callerId);
+  if (!caller) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (caller.role !== "owner") {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (request.method !== "PATCH" && request.method !== "DELETE") {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  const target = await catalog.getMembership(workspaceId, targetPrincipalId);
+  if (!target) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  if (request.method === "DELETE") {
+    if (target.role === "owner") {
+      const owners = await catalog.countOwners(workspaceId);
+      if (owners <= 1) {
+        return Response.json({ error: "last_owner" }, { status: 400 });
+      }
+    }
+    await catalog.deleteMembership(workspaceId, targetPrincipalId);
+    return new Response(null, { status: 204 });
+  }
+
+  const body = await readJson(request);
+  if (!isRecord(body) || (body.role !== "owner" && body.role !== "member")) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const role = body.role as "owner" | "member";
+  if (target.role === "owner" && role === "member") {
+    const owners = await catalog.countOwners(workspaceId);
+    if (owners <= 1) {
+      return Response.json({ error: "last_owner" }, { status: 400 });
+    }
+  }
+  await catalog.updateMembershipRole(workspaceId, targetPrincipalId, role);
+  const members = await catalog.listMembers(workspaceId);
+  const member = members.find((m) => m.principal_id === targetPrincipalId);
+  return Response.json({ member });
+}
+
+async function createOrganization(
+  request: Request,
+  principalId: string,
+  catalog: CatalogStore,
+): Promise<Response> {
+  const body = await readJson(request);
+  if (!isRecord(body)) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const created = await catalog.insertWorkspaceFor(principalId, name);
+  return Response.json(created, { status: 201 });
+}
+
 async function createProject(
   request: Request,
   workspaceId: string,
@@ -552,14 +635,44 @@ async function patchProject(
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
   const body = await readJson(request);
-  if (!isRecord(body) || "parent_id" in body) {
+  if (!isRecord(body)) {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) {
+  const hasName = "name" in body;
+  const hasParent = "parent_id" in body;
+  if (!hasName && !hasParent) {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
-  await catalog.updateProjectName(id, name);
+
+  let name = project.name;
+  if (hasName) {
+    if (typeof body.name !== "string" || !body.name.trim()) {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+    name = body.name.trim();
+  }
+
+  let parentId = project.parent_id;
+  if (hasParent) {
+    if (body.parent_id === null) {
+      parentId = null;
+    } else if (typeof body.parent_id === "string") {
+      const parent = await catalog.getProject(body.parent_id);
+      if (!parent || parent.workspace_id !== project.workspace_id) {
+        return Response.json({ error: "bad_request" }, { status: 400 });
+      }
+      parentId = parent.id;
+    } else {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+    const forest = await catalog.listProjects(project.workspace_id);
+    if (wouldCycle(id, parentId, forest)) {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+  }
+
+  if (hasName) await catalog.updateProjectName(id, name);
+  if (hasParent) await catalog.updateProjectParent(id, parentId);
   return Response.json({ project: await catalog.getProject(id) });
 }
 
@@ -569,6 +682,20 @@ function matchProjectPath(pathname: string): { id: string } | null {
   const id = pathname.slice(prefix.length);
   if (!id || id.includes("/")) return null;
   return { id };
+}
+
+function matchWorkspaceMemberPath(
+  pathname: string,
+): { workspaceId: string; principalId: string } | null {
+  const prefix = "/api/workspaces/";
+  if (!pathname.startsWith(prefix)) return null;
+  const rest = pathname.slice(prefix.length);
+  const parts = rest.split("/");
+  if (parts.length !== 3 || parts[1] !== "members") return null;
+  const workspaceId = parts[0] ?? "";
+  const principalId = parts[2] ?? "";
+  if (!workspaceId || !principalId) return null;
+  return { workspaceId, principalId };
 }
 
 function matchWorkspaceResource(

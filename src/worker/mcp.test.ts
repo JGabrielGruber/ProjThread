@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { handleAdmin } from "./admin.ts";
+import { handleMe } from "./me.ts";
 import {
   DEFAULT_STAGES,
   type CatalogStore,
@@ -140,6 +141,15 @@ function memoryCatalog(): CatalogStore {
       }
       return out;
     },
+    async updateMembershipRole() {
+      throw new Error("unused");
+    },
+    async deleteMembership() {
+      throw new Error("unused");
+    },
+    async countOwners() {
+      throw new Error("unused");
+    },
     async insertMembership(row) {
       const key = membershipKey(row.workspace_id, row.principal_id);
       if (memberships.has(key)) return "exists";
@@ -163,6 +173,9 @@ function memoryCatalog(): CatalogStore {
       if (!row) return false;
       projects.set(id, { ...row, name });
       return true;
+    },
+    async updateProjectParent() {
+      throw new Error("unused");
     },
     async listStages(workspaceId) {
       return [...stages.values()]
@@ -231,6 +244,9 @@ function memoryCatalog(): CatalogStore {
         },
       );
     },
+    async insertWorkspaceFor() {
+      throw new Error("unused");
+    },
     async listOrganizations() {
       return [...organizations.values()].map((o) => ({
         id: o.id,
@@ -297,6 +313,10 @@ function memoryStore(): SessionStore {
     async revokeSession(id, at) {
       const row = sessions.get(id);
       if (row) sessions.set(id, { ...row, revoked_at: at });
+    },
+    async updateSessionWorkspace(id, workspaceId) {
+      const row = sessions.get(id);
+      if (row) sessions.set(id, { ...row, workspace_id: workspaceId });
     },
   };
 }
@@ -906,6 +926,90 @@ describe("handleMcp", () => {
       workspace: { id: string };
     };
     assert.equal(farmPayload.workspace.id, bundle.workspace.id);
+  });
+
+  it("session_briefing without workspace_id uses bound session workspace", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle, principal } =
+      await memberContext();
+    await catalog.insertTenantBundle({
+      organization: {
+        id: "org-consult",
+        name: "Consultoria",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      workspace: {
+        id: "ws-consult",
+        organization_id: "org-consult",
+        name: "Consultoria",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      project: {
+        id: "proj-consult",
+        workspace_id: "ws-consult",
+        organization_id: "org-consult",
+        parent_id: null,
+        name: "Consultoria",
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      principal: {
+        id: principal.id,
+        type: "agent",
+        display_name: principal.display_name,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+      membership: {
+        workspace_id: "ws-consult",
+        principal_id: principal.id,
+        role: "member",
+      },
+    });
+    const patched = await handleMe(
+      new Request(`${ORIGIN}/api/me`, {
+        method: "PATCH",
+        headers: {
+          authorization: `Bearer ${sessionId}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ workspace_id: bundle.workspace.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(patched.status, 200);
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "session_briefing", {}),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      workspace: { id: string };
+      memberships?: unknown;
+    };
+    assert.equal(payload.workspace.id, bundle.workspace.id);
+    assert.equal(payload.memberships, undefined);
+  });
+
+  it("server instructions mention bound workspace", async () => {
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+    const res = await handleMcp(
+      postMcp({ authorization: `Bearer ${sessionId}` }, "server/discover"),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 200);
+    const text = JSON.stringify(await res.json());
+    assert.match(
+      text,
+      /Session may bind workspace; omit workspace_id when bound or when there is one membership\./,
+    );
   });
 
   it("wiki_search returns hits without content", async () => {

@@ -30,23 +30,36 @@ export const useBoardStore = defineStore("board", () => {
   const loading = ref(false);
   const workspaceId = ref<string | null>(null);
   const projectId = ref<string | null>(null);
+  const filterProjectId = ref<string | null>(null);
 
-  async function loadBoard(nextWorkspaceId: string, nextProjectId: string): Promise<void> {
+  async function loadBoard(
+    nextWorkspaceId: string,
+    nextProjectId?: string,
+  ): Promise<void> {
     if (loading.value) return;
     loading.value = true;
     status.value = "loading";
     error.value = null;
     workspaceId.value = nextWorkspaceId;
-    projectId.value = nextProjectId;
     try {
-      const [projectsBody, stagesBody, itemsBody] = await Promise.all([
+      const [projectsBody, stagesBody] = await Promise.all([
         listProjects(nextWorkspaceId),
         listStages(nextWorkspaceId),
-        listWorkItems(nextWorkspaceId, nextProjectId),
       ]);
       projects.value = projectsBody.projects;
       stages.value = stagesBody.stages;
-      items.value = itemsBody.work_items;
+      const root = projectsBody.projects.find((p) => p.parent_id == null);
+      if (nextProjectId !== undefined) {
+        filterProjectId.value = nextProjectId;
+      }
+      const filterId = filterProjectId.value ?? root?.id ?? null;
+      projectId.value = filterId;
+      if (filterId) {
+        const itemsBody = await listWorkItems(nextWorkspaceId, filterId);
+        items.value = itemsBody.work_items;
+      } else {
+        items.value = [];
+      }
       status.value = "ready";
     } catch {
       status.value = "error";
@@ -56,9 +69,29 @@ export const useBoardStore = defineStore("board", () => {
     }
   }
 
+  async function setFilter(id: string | null): Promise<void> {
+    filterProjectId.value = id;
+    const ws = workspaceId.value;
+    const root = projects.value.find((p) => p.parent_id == null);
+    const filterId = id ?? root?.id ?? null;
+    projectId.value = filterId;
+    if (!ws || !filterId) {
+      items.value = [];
+      return;
+    }
+    try {
+      const itemsBody = await listWorkItems(ws, filterId);
+      items.value = itemsBody.work_items;
+    } catch {
+      status.value = "error";
+      error.value = "error";
+    }
+  }
+
   async function createCard(title: string): Promise<void> {
     const ws = workspaceId.value;
-    const project = projectId.value;
+    const root = projects.value.find((p) => p.parent_id == null);
+    const project = filterProjectId.value ?? projectId.value ?? root?.id;
     if (!ws || !project) return;
     try {
       const item = await createWorkItem(ws, { title, project_id: project });
@@ -104,7 +137,9 @@ export const useBoardStore = defineStore("board", () => {
     loading,
     workspaceId,
     projectId,
+    filterProjectId,
     loadBoard,
+    setFilter,
     createCard,
     moveCard,
   };

@@ -6,12 +6,16 @@ import PtButton from "../components/PtButton.vue";
 import PtField from "../components/PtField.vue";
 import PtListRow from "../components/PtListRow.vue";
 import { renderMarkdown } from "../markdown.ts";
+import { useBoardStore } from "../stores/board.ts";
+import { useSessionStore } from "../stores/session.ts";
 import { useWikiStore } from "../stores/wiki.ts";
 
 const NODE_TYPES = ["note", "decision", "process", "research"] as const;
 
 const route = useRoute();
 const router = useRouter();
+const session = useSessionStore();
+const board = useBoardStore();
 const wiki = useWikiStore();
 
 const editing = ref(false);
@@ -20,18 +24,20 @@ const draftTitle = ref("");
 const draftType = ref<(typeof NODE_TYPES)[number]>("note");
 const draftContent = ref("");
 const linkId = ref("");
+const includeId = ref("");
+const citeId = ref("");
 
 function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-const workspaceId = computed(() => queryString(route.query.workspace));
+const workspaceId = computed(() => session.workspaceId);
 const nodeId = computed(() => queryString(route.query.node));
 
 watch(
-  [workspaceId, nodeId],
-  ([workspace, node]) => {
-    if (workspace) void wiki.loadList(workspace);
+  [workspaceId, nodeId, () => board.filterProjectId],
+  ([workspace, node, projectId]) => {
+    if (workspace) void wiki.loadList(workspace, projectId);
     if (node) {
       editing.value = false;
       void wiki.openNode(node);
@@ -44,21 +50,12 @@ const rendered = computed(() =>
   renderMarkdown(wiki.node?.content ?? ""),
 );
 
-function placeQuery(extra: Record<string, string> = {}): Record<string, string> {
-  const query: Record<string, string> = { ...extra };
-  const workspace = queryString(route.query.workspace);
-  const project = queryString(route.query.project);
-  if (workspace) query.workspace = workspace;
-  if (project) query.project = project;
-  return query;
-}
-
 async function openNode(id: string): Promise<void> {
-  await router.replace({ name: "wiki", query: placeQuery({ node: id }) });
+  await router.replace({ name: "wiki", query: { node: id } });
 }
 
 async function back(): Promise<void> {
-  await router.replace({ name: "wiki", query: placeQuery() });
+  await router.replace({ name: "wiki" });
 }
 
 function openCreate(): void {
@@ -122,6 +119,20 @@ async function link(): Promise<void> {
   if (!id) return;
   await wiki.linkWorkItem(id);
   linkId.value = "";
+}
+
+async function include(): Promise<void> {
+  const id = includeId.value.trim();
+  if (!id) return;
+  await wiki.includeChild(id);
+  includeId.value = "";
+}
+
+async function cite(): Promise<void> {
+  const id = citeId.value.trim();
+  if (!id) return;
+  await wiki.citeNode(id);
+  citeId.value = "";
 }
 
 async function togglePin(id: string, pinned: number): Promise<void> {
@@ -203,6 +214,30 @@ async function togglePin(id: string, pinned: number): Promise<void> {
           <PtButton type="submit" :disabled="wiki.status !== 'ready'">Link</PtButton>
         </form>
         <p class="muted">{{ wiki.workItemIds.join(", ") }}</p>
+        <h3>Includes</h3>
+        <ul>
+          <li v-for="row in wiki.includes" :key="row.id">
+            <button type="button" class="title" @click="openNode(row.id)">
+              {{ row.title }}
+            </button>
+          </li>
+        </ul>
+        <form class="link" @submit.prevent="include">
+          <PtField v-model="includeId" type="text" label="Child node id" />
+          <PtButton type="submit" :disabled="wiki.status !== 'ready'">Include</PtButton>
+        </form>
+        <h3>Cites</h3>
+        <ul>
+          <li v-for="row in wiki.refs" :key="row.id">
+            <button type="button" class="title" @click="openNode(row.id)">
+              {{ row.title }}
+            </button>
+          </li>
+        </ul>
+        <form class="link" @submit.prevent="cite">
+          <PtField v-model="citeId" type="text" label="Cite node id" />
+          <PtButton type="submit" :disabled="wiki.status !== 'ready'">Cite</PtButton>
+        </form>
       </template>
       <div v-else class="wiki-edit">
         <div class="row">

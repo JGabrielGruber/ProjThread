@@ -38,6 +38,10 @@ function memoryStore(): SessionStore {
       const row = sessions.get(id);
       if (row) sessions.set(id, { ...row, revoked_at: at });
     },
+    async updateSessionWorkspace(id, workspaceId) {
+      const row = sessions.get(id);
+      if (row) sessions.set(id, { ...row, workspace_id: workspaceId });
+    },
   };
 }
 

@@ -49,7 +49,8 @@ export type IncludeRow = { id: string; title: string; position: number };
 export type RefRow = { id: string; title: string };
 
 export type WikiStore = {
-  listNodes(workspaceId: string): Promise<NodeListRow[]>;
+  listNodes(workspaceId: string, projectIds?: string[]): Promise<NodeListRow[]>;
+  listNodeProjectIds(nodeId: string): Promise<string[]>;
   getNode(id: string): Promise<NodeRow | null>;
   insertNode(row: NodeRow): Promise<void>;
   updateNode(id: string, patch: NodePatch): Promise<boolean>;
@@ -58,6 +59,9 @@ export type WikiStore = {
     nodeId: string,
     workItemId: string,
   ): Promise<"inserted" | "exists">;
+  listNodesForWorkItem(
+    workItemId: string,
+  ): Promise<{ id: string; title: string; type: NodeType; summary: string | null }[]>;
   listIncludes(fromId: string): Promise<IncludeRow[]>;
   listRefs(fromId: string): Promise<RefRow[]>;
   listIncludeEdges(workspaceId: string): Promise<IncludeEdge[]>;
@@ -104,14 +108,46 @@ function applyPatch(row: NodeRow, patch: NodePatch): NodeRow {
 
 export function d1WikiStore(db: D1Database): WikiStore {
   return {
-    async listNodes(workspaceId) {
+    async listNodes(workspaceId, projectIds) {
+      if (!projectIds?.length) {
+        const { results } = await db
+          .prepare(
+            `${NODE_LIST_SELECT} WHERE workspace_id = ? ORDER BY updated_at DESC, id DESC`,
+          )
+          .bind(workspaceId)
+          .all<NodeListRow>();
+        return results;
+      }
+      const placeholders = projectIds.map(() => "?").join(", ");
       const { results } = await db
         .prepare(
-          `${NODE_LIST_SELECT} WHERE workspace_id = ? ORDER BY updated_at DESC, id DESC`,
+          `${NODE_LIST_SELECT}
+WHERE workspace_id = ?
+AND (
+  EXISTS (
+    SELECT 1 FROM node_project np
+    WHERE np.node_id = node.id AND np.project_id IN (${placeholders})
+  )
+  OR EXISTS (
+    SELECT 1 FROM node_work_item nwi
+    INNER JOIN work_item wi ON wi.id = nwi.work_item_id
+    WHERE nwi.node_id = node.id AND wi.project_id IN (${placeholders})
+  )
+)
+ORDER BY updated_at DESC, id DESC`,
         )
-        .bind(workspaceId)
+        .bind(workspaceId, ...projectIds, ...projectIds)
         .all<NodeListRow>();
       return results;
+    },
+    async listNodeProjectIds(nodeId) {
+      const { results } = await db
+        .prepare(
+          "SELECT project_id FROM node_project WHERE node_id = ? ORDER BY project_id",
+        )
+        .bind(nodeId)
+        .all<{ project_id: string }>();
+      return results.map((r) => r.project_id);
     },
     async getNode(id) {
       return db.prepare(`${NODE_SELECT} WHERE id = ?`).bind(id).first<NodeRow>();
@@ -192,6 +228,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         .first<{ node_id: string }>();
       return row != null ? "inserted" : "exists";
     },
+    async listNodesForWorkItem(workItemId) {
+      const { results } = await db
+        .prepare(
+          `SELECT n.id, n.title, n.type, n.summary
+FROM node_work_item l
+JOIN node n ON n.id = l.node_id
+WHERE l.work_item_id = ?
+ORDER BY n.title, n.id`,
+        )
+        .bind(workItemId)
+        .all<{
+          id: string;
+          title: string;
+          type: NodeType;
+          summary: string | null;
+        }>();
+      return results;
+    },
     async listIncludes(fromId) {
       const { results } = await db
         .prepare(
@@ -264,6 +318,7 @@ VALUES (?, ?, 'ref', NULL) RETURNING to_id`,
 export function memoryWikiStore(): WikiStore {
   const nodes = new Map<string, NodeRow>();
   const links = new Map<string, { node_id: string; work_item_id: string }>();
+  const nodeProjects = new Map<string, { node_id: string; project_id: string }>();
   const rels = new Map<
     string,
     { from_id: string; to_id: string; kind: RelKind; position: number | null }
@@ -290,6 +345,12 @@ export function memoryWikiStore(): WikiStore {
         })
         .map(toListRow);
     },
+    async listNodeProjectIds(nodeId) {
+      return [...nodeProjects.values()]
+        .filter((row) => row.node_id === nodeId)
+        .map((row) => row.project_id)
+        .sort();
+    },
     async getNode(id) {
       const row = nodes.get(id);
       return row ? { ...row } : null;
@@ -314,6 +375,26 @@ export function memoryWikiStore(): WikiStore {
       if (links.has(key)) return "exists";
       links.set(key, { node_id: nodeId, work_item_id: workItemId });
       return "inserted";
+    },
+    async listNodesForWorkItem(workItemId) {
+      return [...links.values()]
+        .filter((row) => row.work_item_id === workItemId)
+        .map((row) => {
+          const node = nodes.get(row.node_id);
+          return {
+            id: row.node_id,
+            title: node?.title ?? "",
+            type: node?.type ?? "note",
+            summary: node?.summary ?? null,
+          };
+        })
+        .sort((a, b) => {
+          if (a.title < b.title) return -1;
+          if (a.title > b.title) return 1;
+          if (a.id < b.id) return -1;
+          if (a.id > b.id) return 1;
+          return 0;
+        });
     },
     async listIncludes(fromId) {
       return [...rels.values()]

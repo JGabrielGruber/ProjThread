@@ -198,4 +198,127 @@ describe("config store", () => {
     assert.equal(patches[0]?.url, "/api/workspaces/ws1/stages");
     assert.deepEqual(patches[0]?.body, { stages });
   });
+
+  it("setRole PATCHes member role", async () => {
+    const patches: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") {
+        if (url.endsWith("/members")) {
+          return Response.json({
+            members: [
+              { principal_id: "p2", display_name: "Bot", type: "human", role: "member" },
+            ],
+          });
+        }
+        if (url.endsWith("/projects")) return Response.json({ projects: [] });
+        if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      }
+      if (url === "/api/workspaces/ws1/members/p2" && method === "PATCH") {
+        patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return Response.json({
+          member: {
+            principal_id: "p2",
+            display_name: "Bot",
+            type: "human",
+            role: "owner",
+          },
+        });
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useConfigStore();
+    await store.load("ws1");
+    await store.setRole("p2", "owner");
+    assert.equal(patches.length, 1);
+    assert.equal(patches[0]?.url, "/api/workspaces/ws1/members/p2");
+    assert.deepEqual(patches[0]?.body, { role: "owner" });
+  });
+
+  it("removeMember DELETEs member", async () => {
+    const deletes: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") {
+        if (url.endsWith("/members")) {
+          return Response.json({
+            members: [
+              { principal_id: "p2", display_name: "Bot", type: "human", role: "member" },
+            ],
+          });
+        }
+        if (url.endsWith("/projects")) return Response.json({ projects: [] });
+        if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      }
+      if (url === "/api/workspaces/ws1/members/p2" && method === "DELETE") {
+        deletes.push(url);
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useConfigStore();
+    await store.load("ws1");
+    await store.removeMember("p2");
+    assert.deepEqual(deletes, ["/api/workspaces/ws1/members/p2"]);
+    assert.equal(store.members.some((m) => m.principal_id === "p2"), false);
+  });
+
+  it("createWorkspace POSTs /api/organizations", async () => {
+    const posts: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/organizations" && method === "POST") {
+        posts.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return Response.json(
+          {
+            organization: { id: "o2", name: "Keep" },
+            workspace: { id: "w2", name: "Keep" },
+            project: { id: "p2", name: "Keep", parent_id: null },
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/me" && method === "PATCH") {
+        return Response.json({
+          principal: { id: "p1", type: "human", display_name: "Ada" },
+          memberships: [
+            {
+              organization_id: "o2",
+              organization_name: "Keep",
+              workspace_id: "w2",
+              workspace_name: "Keep",
+              role: "owner",
+            },
+          ],
+          workspace_id: "w2",
+        });
+      }
+      if (url === "/api/me") {
+        return Response.json({
+          principal: { id: "p1", type: "human", display_name: "Ada" },
+          memberships: [
+            {
+              organization_id: "o2",
+              organization_name: "Keep",
+              workspace_id: "w2",
+              workspace_name: "Keep",
+              role: "owner",
+            },
+          ],
+          workspace_id: "w2",
+        });
+      }
+      if (url.endsWith("/members")) return Response.json({ members: [] });
+      if (url.endsWith("/projects")) return Response.json({ projects: [] });
+      if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useConfigStore();
+    await store.createWorkspace("Keep");
+    assert.equal(posts[0]?.url, "/api/organizations");
+    assert.deepEqual(posts[0]?.body, { name: "Keep" });
+  });
 });

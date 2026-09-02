@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import PtButton from "../components/PtButton.vue";
+import PtField from "../components/PtField.vue";
+import { useConfigStore } from "../stores/config.ts";
 import { useRoomStore } from "../stores/room.ts";
+import { useSessionStore } from "../stores/session.ts";
 
 const route = useRoute();
 const router = useRouter();
 const room = useRoomStore();
+const session = useSessionStore();
+const config = useConfigStore();
 const draft = ref("");
 const activityType = ref<"note" | "decision" | "occurrence">("note");
 const activityBody = ref("");
+const attachId = ref("");
 
 function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
@@ -29,6 +36,14 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => session.workspaceId,
+  (workspace) => {
+    if (workspace && config.workspaceId !== workspace) void config.load(workspace);
+  },
+  { immediate: true },
+);
+
 onUnmounted(() => {
   room.close();
 });
@@ -38,12 +53,7 @@ const lines = computed(() =>
 );
 
 async function back(): Promise<void> {
-  const query: Record<string, string> = {};
-  const workspace = queryString(route.query.workspace);
-  const project = queryString(route.query.project);
-  if (workspace) query.workspace = workspace;
-  if (project) query.project = project;
-  await router.replace({ name: "kanban", query });
+  await router.replace({ name: "kanban" });
 }
 
 function eventFor(eventId: string | null) {
@@ -68,6 +78,22 @@ async function submitActivity(): Promise<void> {
 function toggleActivityOnly(): void {
   room.activityOnly = !room.activityOnly;
 }
+
+async function onOwner(value: string): Promise<void> {
+  const to = value || null;
+  await room.postEvent({
+    type: "owner_changed",
+    from: room.item?.owner_id ?? null,
+    to,
+  });
+}
+
+async function attach(): Promise<void> {
+  const id = attachId.value.trim();
+  if (!id) return;
+  await room.attachNode(id);
+  attachId.value = "";
+}
 </script>
 
 <template>
@@ -76,7 +102,40 @@ function toggleActivityOnly(): void {
       <button type="button" class="back" @click="back">Back</button>
       <h2>{{ room.item?.title }}</h2>
       <p class="stage">{{ room.item?.stage_key }}</p>
+      <PtField
+        as="select"
+        label="Owner"
+        :model-value="room.item?.owner_id ?? ''"
+        @update:model-value="onOwner(String($event))"
+      >
+        <option value="">unassigned</option>
+        <option
+          v-for="member in config.members"
+          :key="member.principal_id"
+          :value="member.principal_id"
+        >
+          {{ member.display_name }}
+        </option>
+      </PtField>
     </header>
+    <section class="nodes">
+      <h3>Nodes</h3>
+      <ul>
+        <li v-for="node in room.nodes" :key="node.id">
+          <button
+            type="button"
+            class="title"
+            @click="router.push({ name: 'wiki', query: { node: node.id } })"
+          >
+            {{ node.title }}
+          </button>
+        </li>
+      </ul>
+      <form class="link" @submit.prevent="attach">
+        <PtField v-model="attachId" type="text" label="Node id" />
+        <PtButton type="submit">Attach</PtButton>
+      </form>
+    </section>
     <button type="button" class="toggle" @click="toggleActivityOnly">
       Activity only
     </button>

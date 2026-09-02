@@ -1,3 +1,4 @@
+import { newId } from "../lib/id.ts";
 import type { D1Database } from "./env.ts";
 
 export const DEFAULT_STAGES = [
@@ -108,10 +109,18 @@ export type CatalogStore = {
   ): Promise<Membership | null>;
   listMembers(workspaceId: string): Promise<WorkspaceMemberRow[]>;
   insertMembership(row: MembershipWrite): Promise<"inserted" | "exists">;
+  updateMembershipRole(
+    workspaceId: string,
+    principalId: string,
+    role: "owner" | "member",
+  ): Promise<boolean>;
+  deleteMembership(workspaceId: string, principalId: string): Promise<boolean>;
+  countOwners(workspaceId: string): Promise<number>;
   listProjects(workspaceId: string): Promise<ProjectRow[]>;
   getProject(id: string): Promise<(ProjectRow & { created_at: string }) | null>;
   insertProject(row: ProjectRow & { created_at: string }): Promise<void>;
   updateProjectName(id: string, name: string): Promise<boolean>;
+  updateProjectParent(id: string, parentId: string | null): Promise<boolean>;
   listStages(workspaceId: string): Promise<StageRow[]>;
   replaceStages(workspaceId: string, stages: StageRow[]): Promise<boolean>;
   listWorkItems(
@@ -126,6 +135,14 @@ export type CatalogStore = {
     updatedAt: string,
   ): Promise<boolean>;
   insertTenantBundle(b: TenantBundle): Promise<void>;
+  insertWorkspaceFor(
+    principalId: string,
+    name: string,
+  ): Promise<{
+    organization: { id: string; name: string };
+    workspace: { id: string; name: string };
+    project: { id: string; name: string; parent_id: null };
+  }>;
   listOrganizations(): Promise<{ id: string; name: string }[]>;
   listWorkItemEvents(workItemId: string): Promise<WorkItemEventRow[]>;
   commitWorkItemEvent(commit: WorkItemEventCommit): Promise<void>;
@@ -182,6 +199,33 @@ WHERE membership.workspace_id = ?`,
         .run()) as { meta?: { changes?: number } };
       return result.meta?.changes === 0 ? "exists" : "inserted";
     },
+    async updateMembershipRole(workspaceId, principalId, role) {
+      const row = await db
+        .prepare(
+          "UPDATE membership SET role = ? WHERE workspace_id = ? AND principal_id = ? RETURNING principal_id",
+        )
+        .bind(role, workspaceId, principalId)
+        .first<{ principal_id: string }>();
+      return row != null;
+    },
+    async deleteMembership(workspaceId, principalId) {
+      const row = await db
+        .prepare(
+          "DELETE FROM membership WHERE workspace_id = ? AND principal_id = ? RETURNING principal_id",
+        )
+        .bind(workspaceId, principalId)
+        .first<{ principal_id: string }>();
+      return row != null;
+    },
+    async countOwners(workspaceId) {
+      const row = await db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM membership WHERE workspace_id = ? AND role = 'owner'",
+        )
+        .bind(workspaceId)
+        .first<{ n: number }>();
+      return Number(row?.n ?? 0);
+    },
     async listProjects(workspaceId) {
       const { results } = await db
         .prepare(
@@ -218,6 +262,13 @@ WHERE membership.workspace_id = ?`,
       const row = await db
         .prepare("UPDATE project SET name = ? WHERE id = ? RETURNING id")
         .bind(name, id)
+        .first<{ id: string }>();
+      return row != null;
+    },
+    async updateProjectParent(id, parentId) {
+      const row = await db
+        .prepare("UPDATE project SET parent_id = ? WHERE id = ? RETURNING id")
+        .bind(parentId, id)
         .first<{ id: string }>();
       return row != null;
     },
@@ -358,6 +409,49 @@ WHERE workspace_id = ? AND project_id IN (${placeholders})`,
           b.membership.role,
         )
         .run();
+    },
+    async insertWorkspaceFor(principalId, name) {
+      const now = new Date().toISOString();
+      const organizationId = newId();
+      const workspaceId = newId();
+      const projectId = newId();
+      await db
+        .prepare(
+          "INSERT INTO organization (id, name, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(organizationId, name, now)
+        .run();
+      await db
+        .prepare(
+          "INSERT INTO workspace (id, organization_id, name, created_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(workspaceId, organizationId, name, now)
+        .run();
+      for (const stage of DEFAULT_STAGES) {
+        await db
+          .prepare(
+            "INSERT INTO stage (workspace_id, key, label, position) VALUES (?, ?, ?, ?)",
+          )
+          .bind(workspaceId, stage.key, stage.label, stage.position)
+          .run();
+      }
+      await db
+        .prepare(
+          "INSERT INTO project (id, workspace_id, organization_id, parent_id, name, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(projectId, workspaceId, organizationId, null, name, now)
+        .run();
+      await db
+        .prepare(
+          "INSERT INTO membership (workspace_id, principal_id, role) VALUES (?, ?, ?)",
+        )
+        .bind(workspaceId, principalId, "owner")
+        .run();
+      return {
+        organization: { id: organizationId, name },
+        workspace: { id: workspaceId, name },
+        project: { id: projectId, name, parent_id: null },
+      };
     },
     async listOrganizations() {
       const { results } = await db

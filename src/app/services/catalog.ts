@@ -75,11 +75,44 @@ export function createProject(
 
 export function patchProject(
   id: string,
-  body: { name: string },
+  body: { name?: string; parent_id?: string | null },
 ): Promise<{ project: ConfigProject }> {
   return apiJson(`/api/projects/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+}
+
+export function patchMember(
+  workspaceId: string,
+  principalId: string,
+  role: "owner" | "member",
+): Promise<{ member: ConfigMember }> {
+  return apiJson(`/api/workspaces/${workspaceId}/members/${principalId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function deleteMember(
+  workspaceId: string,
+  principalId: string,
+): Promise<void> {
+  return apiJson(`/api/workspaces/${workspaceId}/members/${principalId}`, {
+    method: "DELETE",
+  });
+}
+
+export function createOrganization(
+  name: string,
+): Promise<{
+  organization: { id: string; name: string };
+  workspace: { id: string; name: string };
+  project: { id: string; name: string; parent_id: null };
+}> {
+  return apiJson("/api/organizations", {
+    method: "POST",
+    body: JSON.stringify({ name }),
   });
 }
 

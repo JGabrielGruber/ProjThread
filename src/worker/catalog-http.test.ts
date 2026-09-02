@@ -13,6 +13,7 @@ import {
   type WorkspaceMemberRow,
 } from "./catalog.ts";
 import { COOKIE_NAME } from "../lib/cookies.ts";
+import { newId } from "../lib/id.ts";
 import type { Env } from "./env.ts";
 import {
   type Principal,
@@ -102,6 +103,26 @@ function memoryCatalog(): MemoryCatalog {
       memberships.set(key, { ...row });
       return "inserted";
     },
+    async updateMembershipRole(workspaceId, principalId, role) {
+      const key = membershipKey(workspaceId, principalId);
+      const row = memberships.get(key);
+      if (!row) return false;
+      memberships.set(key, { ...row, role });
+      return true;
+    },
+    async deleteMembership(workspaceId, principalId) {
+      const key = membershipKey(workspaceId, principalId);
+      if (!memberships.has(key)) return false;
+      memberships.delete(key);
+      return true;
+    },
+    async countOwners(workspaceId) {
+      let n = 0;
+      for (const row of memberships.values()) {
+        if (row.workspace_id === workspaceId && row.role === "owner") n += 1;
+      }
+      return n;
+    },
     async insertProject(row) {
       projects.set(row.id, { ...row });
     },
@@ -109,6 +130,12 @@ function memoryCatalog(): MemoryCatalog {
       const row = projects.get(id);
       if (!row) return false;
       projects.set(id, { ...row, name });
+      return true;
+    },
+    async updateProjectParent(id, parentId) {
+      const row = projects.get(id);
+      if (!row) return false;
+      projects.set(id, { ...row, parent_id: parentId });
       return true;
     },
     async replaceStages(workspaceId, next) {
@@ -176,6 +203,46 @@ function memoryCatalog(): MemoryCatalog {
         { ...b.membership },
       );
     },
+    async insertWorkspaceFor(principalId, name) {
+      const now = new Date().toISOString();
+      const organization = { id: newId(), name, created_at: now };
+      const workspace = {
+        id: newId(),
+        organization_id: organization.id,
+        name,
+        created_at: now,
+      };
+      const project = {
+        id: newId(),
+        workspace_id: workspace.id,
+        organization_id: organization.id,
+        parent_id: null as const,
+        name,
+        created_at: now,
+      };
+      organizations.set(organization.id, organization);
+      workspaces.set(workspace.id, workspace);
+      for (const stage of DEFAULT_STAGES) {
+        const row: StageRow = {
+          workspace_id: workspace.id,
+          key: stage.key,
+          label: stage.label,
+          position: stage.position,
+        };
+        stages.set(`${row.workspace_id}:${row.key}`, row);
+      }
+      projects.set(project.id, project);
+      memberships.set(membershipKey(workspace.id, principalId), {
+        workspace_id: workspace.id,
+        principal_id: principalId,
+        role: "owner",
+      });
+      return {
+        organization: { id: organization.id, name },
+        workspace: { id: workspace.id, name },
+        project: { id: project.id, name, parent_id: null },
+      };
+    },
     async listOrganizations() {
       throw new Error("unused");
     },
@@ -225,10 +292,14 @@ function stubCatalog(): CatalogStore {
     getMembership: unused,
     listMembers: unused,
     insertMembership: unused,
+    updateMembershipRole: unused,
+    deleteMembership: unused,
+    countOwners: unused,
     listProjects: unused,
     getProject: unused,
     insertProject: unused,
     updateProjectName: unused,
+    updateProjectParent: unused,
     listStages: unused,
     replaceStages: unused,
     listWorkItems: unused,
@@ -236,6 +307,7 @@ function stubCatalog(): CatalogStore {
     insertWorkItem: unused,
     updateWorkItemTitle: unused,
     insertTenantBundle: unused,
+    insertWorkspaceFor: unused,
     listOrganizations: unused,
     listWorkItemEvents: unused,
     commitWorkItemEvent: unused,
@@ -269,6 +341,10 @@ function memoryStore(): SessionStore {
     async revokeSession(id, at) {
       const row = sessions.get(id);
       if (row) sessions.set(id, { ...row, revoked_at: at });
+    },
+    async updateSessionWorkspace(id, workspaceId) {
+      const row = sessions.get(id);
+      if (row) sessions.set(id, { ...row, workspace_id: workspaceId });
     },
   };
 }
@@ -1202,21 +1278,78 @@ describe("handleCatalog config", () => {
     assert.equal(payload.project.name, "Farm");
   });
 
-  it("PATCH project with parent_id is 400 and name unchanged", async () => {
+  it("PATCH project parent_id to a valid parent is 200", async () => {
     const { cookie, catalog, bundle, sessions } = await memberContext();
-    const res = await handleCatalog(
-      new Request(`${ORIGIN}/api/projects/${bundle.project.id}`, {
-        method: "PATCH",
+    const child = await handleCatalog(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/projects`, {
+        method: "POST",
         headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ name: "Farm", parent_id: null }),
+        body: JSON.stringify({
+          name: "Barn",
+          parent_id: bundle.project.id,
+        }),
       }),
       env,
       sessions,
       catalog,
     );
-    assert.equal(res.status, 400);
-    const project = await catalog.getProject(bundle.project.id);
-    assert.equal(project?.name, "Farm");
+    const created = (await child.json()) as { project: { id: string } };
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/projects/${created.project.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ parent_id: null }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 200);
+    const payload = (await res.json()) as {
+      project: { parent_id: string | null; name: string };
+    };
+    assert.equal(payload.project.parent_id, null);
+    assert.equal(payload.project.name, "Barn");
+  });
+
+  it("PATCH project parent_id that would cycle is 400", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const child = await handleCatalog(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/projects`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Barn",
+          parent_id: bundle.project.id,
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    const created = (await child.json()) as { project: { id: string } };
+    const self = await handleCatalog(
+      new Request(`${ORIGIN}/api/projects/${created.project.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ parent_id: created.project.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(self.status, 400);
+    const intoChild = await handleCatalog(
+      new Request(`${ORIGIN}/api/projects/${bundle.project.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ parent_id: created.project.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(intoChild.status, 400);
   });
 
   it("PATCH stages full key set swaps labels and positions", async () => {
@@ -1290,5 +1423,247 @@ describe("handleCatalog config", () => {
       catalog,
     );
     assert.equal(res.status, 400);
+  });
+
+  it("owner PATCH role member on another owner when a second owner exists is 200", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const extra = await mintCookie(sessions);
+    const added = await handleCatalog(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/members`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          principal_id: extra.principal.id,
+          role: "owner",
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(added.status, 201);
+    const res = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/members/${extra.principal.id}`,
+        {
+          method: "PATCH",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({ role: "member" }),
+        },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 200);
+    const payload = (await res.json()) as { member: { role: string } };
+    assert.equal(payload.member.role, "member");
+  });
+
+  it("PATCH or DELETE the sole owner is 400 last_owner", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const patched = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/members/${bundle.principal.id}`,
+        {
+          method: "PATCH",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({ role: "member" }),
+        },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(patched.status, 400);
+    assert.deepEqual(await patched.json(), { error: "last_owner" });
+    const deleted = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/members/${bundle.principal.id}`,
+        { method: "DELETE", headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(deleted.status, 400);
+    assert.deepEqual(await deleted.json(), { error: "last_owner" });
+  });
+
+  it("member caller PATCH or DELETE is 403", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const extra = await mintCookie(sessions);
+    await handleCatalog(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/members`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ principal_id: extra.principal.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    const res = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/members/${bundle.principal.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            cookie: extra.cookie,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ role: "member" }),
+        },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 403);
+  });
+
+  it("DELETE other member is 204 and they drop from GET members", async () => {
+    const { cookie, catalog, bundle, sessions } = await memberContext();
+    const extra = await mintCookie(sessions);
+    await handleCatalog(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/members`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ principal_id: extra.principal.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    const res = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/members/${extra.principal.id}`,
+        { method: "DELETE", headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 204);
+    const listed = await handleCatalog(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/members`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    const payload = (await listed.json()) as {
+      members: { principal_id: string }[];
+    };
+    assert.equal(
+      payload.members.some((m) => m.principal_id === extra.principal.id),
+      false,
+    );
+  });
+});
+
+describe("handleCatalog organizations", () => {
+  it("session POST creates org owned by the caller with stages and a root project", async () => {
+    const sessions = memoryStore();
+    const { principal, cookie } = await mintCookie(sessions);
+    const catalog = memoryCatalog();
+    const res = await handleCatalog(
+      new Request(`${ORIGIN}/api/organizations`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Keep" }),
+      }),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(res.status, 201);
+    const body = (await res.json()) as {
+      organization: { id: string; name: string };
+      workspace: { id: string; name: string };
+      project: { id: string; name: string; parent_id: string | null };
+      principal?: unknown;
+    };
+    assert.equal(body.organization.name, "Keep");
+    assert.equal(body.workspace.name, "Keep");
+    assert.equal(body.project.name, "Keep");
+    assert.equal(body.project.parent_id, null);
+    assert.equal(body.principal, undefined);
+
+    const membersRes = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${body.workspace.id}/members`,
+        { headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    assert.equal(membersRes.status, 200);
+    const members = (await membersRes.json()) as {
+      members: { principal_id: string; role: string }[];
+    };
+    assert.equal(members.members.length, 1);
+    assert.equal(members.members[0]?.principal_id, principal.id);
+    assert.equal(members.members[0]?.role, "owner");
+
+    const stagesRes = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${body.workspace.id}/stages`,
+        { headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    const stages = (await stagesRes.json()) as { stages: { key: string }[] };
+    assert.deepEqual(
+      stages.stages.map((s) => s.key),
+      ["backlog", "doing", "done"],
+    );
+
+    const projectsRes = await handleCatalog(
+      new Request(
+        `${ORIGIN}/api/workspaces/${body.workspace.id}/projects`,
+        { headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+    );
+    const projects = (await projectsRes.json()) as {
+      projects: { id: string; parent_id: string | null }[];
+    };
+    assert.equal(projects.projects.length, 1);
+    assert.equal(projects.projects[0]?.id, body.project.id);
+    assert.equal(projects.projects[0]?.parent_id, null);
+  });
+
+  it("POST empty name is 400; no session is 401", async () => {
+    const sessions = memoryStore();
+    const { cookie } = await mintCookie(sessions);
+    const empty = await handleCatalog(
+      new Request(`${ORIGIN}/api/organizations`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "  " }),
+      }),
+      env,
+      sessions,
+      memoryCatalog(),
+    );
+    assert.equal(empty.status, 400);
+    const noSession = await handleCatalog(
+      new Request(`${ORIGIN}/api/organizations`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Keep" }),
+      }),
+      env,
+      memoryStore(),
+      memoryCatalog(),
+    );
+    assert.equal(noSession.status, 401);
   });
 });

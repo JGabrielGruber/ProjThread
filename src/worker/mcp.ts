@@ -26,7 +26,7 @@ const MCP_OPTIONS = {
   legacy: "stateless" as const,
 };
 
-const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory. Start with session_briefing; wiki_read the pins — that is how this workspace works. Then search. One membership: omit workspace_id.`;
+const MCP_INSTRUCTIONS = `ProjThread is a live workspace, not a ticket tracker. A card is the work (one card, one chat room — chat is not on this server). Wiki is reusable knowledge. Activity on a card is working memory. Start with session_briefing; wiki_read the pins — that is how this workspace works. Then search. Session may bind workspace; omit workspace_id when bound or when there is one membership.`;
 
 const HITS_CAP = 50;
 
@@ -57,6 +57,7 @@ type MembershipView = {
 type MePayload = {
   principal: { id: string; type: string; display_name: string };
   memberships: MembershipView[];
+  workspace_id: string | null;
 };
 
 type CompactCard = {
@@ -118,7 +119,8 @@ async function wrap(
     res = await handleMe(request, deps.env, deps.sessions, deps.catalog);
   } else if (
     url.pathname.startsWith("/api/nodes") ||
-    /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname)
+    /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname) ||
+    /^\/api\/work-items\/[^/]+\/nodes$/.test(url.pathname)
   ) {
     res = await handleWiki(
       request,
@@ -193,7 +195,9 @@ async function loadMe(deps: Deps): Promise<ToolOut | MePayload> {
   const record = parsed as Record<string, unknown>;
   const principal = record.principal as MePayload["principal"];
   const memberships = (record.memberships as MePayload["memberships"]) ?? [];
-  return { principal, memberships };
+  const workspace_id =
+    typeof record.workspace_id === "string" ? record.workspace_id : null;
+  return { principal, memberships, workspace_id };
 }
 
 async function workspaceId(
@@ -208,6 +212,12 @@ async function workspaceId(
       return errorResult({ ...WORKSPACE_REQUIRED });
     }
     return explicit;
+  }
+  if (
+    typeof me.workspace_id === "string" &&
+    memberships.some((row) => row.workspace_id === me.workspace_id)
+  ) {
+    return me.workspace_id;
   }
   if (memberships.length === 1) return memberships[0]!.workspace_id;
   return errorResult({ ...WORKSPACE_REQUIRED });
@@ -287,7 +297,10 @@ function createServer(deps: Deps): McpServer {
     async ({ workspace_id }) => {
       const me = await loadMe(deps);
       if (isErrorOut(me)) return me;
-      if (!workspace_id && me.memberships.length !== 1) {
+      const bound =
+        typeof me.workspace_id === "string" &&
+        me.memberships.some((row) => row.workspace_id === me.workspace_id);
+      if (!workspace_id && me.memberships.length !== 1 && !bound) {
         return jsonResult({
           principal: me.principal,
           memberships: me.memberships.map((row) => ({

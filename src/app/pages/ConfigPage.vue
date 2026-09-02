@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { ref, watch } from "vue";
 import Modal from "../components/Modal.vue";
 import PtButton from "../components/PtButton.vue";
 import PtField from "../components/PtField.vue";
@@ -9,15 +8,10 @@ import {
   useConfigStore,
   type ConfigStage,
 } from "../stores/config.ts";
+import { useSessionStore } from "../stores/session.ts";
 
-const route = useRoute();
+const session = useSessionStore();
 const config = useConfigStore();
-
-function queryString(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
-}
-
-const workspaceId = computed(() => queryString(route.query.workspace));
 
 const memberOpen = ref(false);
 const principalId = ref("");
@@ -31,9 +25,10 @@ const renameId = ref<string | null>(null);
 const renameName = ref("");
 
 const draftStages = ref<ConfigStage[]>([]);
+const workspaceName = ref("");
 
 watch(
-  workspaceId,
+  () => session.workspaceId,
   (workspace) => {
     if (workspace) void config.load(workspace);
   },
@@ -90,6 +85,23 @@ async function submitRename(): Promise<void> {
   renameOpen.value = false;
 }
 
+async function onRole(principalId: string, role: string): Promise<void> {
+  if (role !== "owner" && role !== "member") return;
+  await config.setRole(principalId, role);
+}
+
+async function onParent(id: string, parent: string): Promise<void> {
+  await config.reparentProject(id, parent || null);
+}
+
+async function submitWorkspace(): Promise<void> {
+  const name = workspaceName.value.trim();
+  if (!name) return;
+  await config.createWorkspace(name);
+  if (config.status === "error") return;
+  workspaceName.value = "";
+}
+
 async function submitStages(): Promise<void> {
   if (config.status !== "ready") return;
   await config.saveStages(
@@ -107,10 +119,36 @@ async function submitStages(): Promise<void> {
     <h2>Config</h2>
 
     <section class="block">
+    <h3>Workspace</h3>
+    <form class="form" @submit.prevent="submitWorkspace">
+      <PtField v-model="workspaceName" type="text" label="New workspace" />
+      <PtButton type="submit" variant="primary">Create workspace</PtButton>
+    </form>
+    </section>
+
+    <section class="block">
     <h3>Members</h3>
     <ul>
       <PtListRow v-for="member in config.members" :key="member.principal_id">
-        {{ member.display_name }} · {{ member.role }}
+        {{ member.display_name }}
+        <template #meta>
+          <PtField
+            as="select"
+            :model-value="member.role"
+            :label="`${member.display_name} role`"
+            @update:model-value="onRole(member.principal_id, String($event))"
+          >
+            <option value="owner">owner</option>
+            <option value="member">member</option>
+          </PtField>
+          <PtButton
+            type="button"
+            :disabled="config.status !== 'ready'"
+            @click="config.removeMember(member.principal_id)"
+          >
+            Remove
+          </PtButton>
+        </template>
       </PtListRow>
     </ul>
     <PtButton
@@ -145,6 +183,21 @@ async function submitStages(): Promise<void> {
       <PtListRow v-for="project in config.projects" :key="project.id">
         {{ project.name }} · {{ parentName(project.parent_id) }}
         <template #meta>
+          <PtField
+            as="select"
+            :model-value="project.parent_id ?? ''"
+            :label="`${project.name} parent`"
+            @update:model-value="onParent(project.id, String($event))"
+          >
+            <option value="">root</option>
+            <option
+              v-for="other in config.projects.filter((p) => p.id !== project.id)"
+              :key="other.id"
+              :value="other.id"
+            >
+              {{ other.name }}
+            </option>
+          </PtField>
           <PtButton
             type="button"
             :disabled="config.status !== 'ready'"

@@ -20,5 +20,6 @@ export async function apiJson<T>(
     headers,
   });
   if (!res.ok) throw new ApiError(res.status);
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

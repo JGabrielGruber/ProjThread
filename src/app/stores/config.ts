@@ -8,14 +8,18 @@ import type {
 } from "../models/config.ts";
 import {
   addMember as addMemberRequest,
+  createOrganization,
   createProject as createProjectRequest,
+  deleteMember as deleteMemberRequest,
   listMembers,
   listProjects,
   listStages,
+  patchMember,
   patchProject,
   patchStages,
 } from "../services/catalog.ts";
 import { ApiError } from "../services/http.ts";
+import { useSessionStore } from "./session.ts";
 
 export type {
   ConfigMember,
@@ -122,6 +126,66 @@ export const useConfigStore = defineStore("config", () => {
     }
   }
 
+  async function reparentProject(
+    id: string,
+    parentId: string | null,
+  ): Promise<void> {
+    try {
+      const body = await patchProject(id, { parent_id: parentId });
+      projects.value = projects.value.map((p) =>
+        p.id === id ? { ...p, parent_id: body.project.parent_id } : p,
+      );
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function setRole(
+    principalId: string,
+    role: "owner" | "member",
+  ): Promise<void> {
+    const ws = workspaceId.value;
+    if (!ws) return;
+    try {
+      const body = await patchMember(ws, principalId, role);
+      members.value = members.value.map((m) =>
+        m.principal_id === principalId ? { ...m, ...body.member } : m,
+      );
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function removeMember(principalId: string): Promise<void> {
+    const ws = workspaceId.value;
+    if (!ws) return;
+    try {
+      await deleteMemberRequest(ws, principalId);
+      members.value = members.value.filter(
+        (m) => m.principal_id !== principalId,
+      );
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function createWorkspace(name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const created = await createOrganization(trimmed);
+      const session = useSessionStore();
+      await session.bindWorkspace(created.workspace.id);
+      await session.loadMe();
+      await load(created.workspace.id);
+    } catch (err) {
+      fail(err);
+    }
+  }
+
   async function saveStages(next: ConfigStage[]): Promise<void> {
     const ws = workspaceId.value;
     if (!ws) return;
@@ -146,6 +210,10 @@ export const useConfigStore = defineStore("config", () => {
     addMember,
     createProject,
     renameProject,
+    reparentProject,
+    setRole,
+    removeMember,
+    createWorkspace,
     saveStages,
   };
 });

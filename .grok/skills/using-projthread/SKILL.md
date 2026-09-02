@@ -9,7 +9,7 @@ ProjThread is a **live workspace**. People and agents talk in a **room**. Each p
 
 This MCP server is catalog + wiki. **Chat is not here.**
 
-A human creates the first workspace in the PWA (session, no memberships). This MCP does not create organizations.
+A human may create the first workspace in the PWA. Agents maintain structure: `workspace_create`, `members_*`, `project_*`, `stages_replace`. `members_add` needs an existing `principal_id` (not a display name). Admin still vends sessions. This MCP does not mint principals.
 
 | Layer | Holds |
 | --- | --- |

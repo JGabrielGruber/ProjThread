@@ -34,6 +34,6 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | --- | --- |
 | Operator CRUD (16) | Landed |
 | Empty tenant (17) | Landed (local + workers.dev). Farm seed file gone. Remote Farm rows wait on José |
-| Config MCP (18) | Landed (local; workers.dev until next deploy) |
+| Config MCP (18) | Landed (local + workers.dev, version `ce62acca-1f40-4198-b67f-b72f95ffcac7`) |
 | Deploy briefing pins + remote `0006` | Done (`0006`+`0007` on remote; version `2be119b6-9da2-43f5-b07a-692acfc5fb9d`) |
 | Reset Grok Bot memory | Ops, anytime |

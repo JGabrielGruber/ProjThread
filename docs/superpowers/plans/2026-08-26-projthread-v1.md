@@ -23,17 +23,17 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **14. Briefing pins** | `2026-08-31-projthread-briefing-pins.md` | Wiki pins on `session_briefing`; process lives on those nodes; no Config MCP |
 | **15. PWA structure** | `2026-08-31-projthread-pwa-structure.md` | Real routes, `pages/` `components/` `models/` `services/`; extract primitives; no new CRUD |
 | **16. Operator CRUD** | `2026-09-01-projthread-operator-crud.md` | Mutations the PWA still lacks; workspace on session; project tree filter chrome; reverse attach on the room; HTTP where missing |
-| **17. Empty tenant** | *(not written)* | Create a workspace to keep, then Farm seed can go |
+| **17. Empty tenant** | `2026-09-02-projthread-empty-tenant.md` | First-workspace PWA; retire Farm seed. Remote D1 drop is ops |
 | **18. Config MCP** | *(not written)* | Bot members/projects/stages; after human setup |
 
-**Now:** no open slice. Next named work is **empty tenant** (plan 17 not written). Park plan 8. Do not start OAuth. Do not start room MCP. Do not start Config MCP until 18 is named in STATUS.
+**Now:** no open slice. Next named work is write Config MCP (plan 18, not written). Park plan 8. Do not start OAuth. Do not start room MCP. Do not drop remote D1 unless José asks.
 
 **Later (named, no plan file yet):**
 
 | Work | When |
 | --- | --- |
 | Operator CRUD (16) | Landed |
-| Empty tenant / drop Farm D1 (17 + ops) | After operator CRUD can create a workspace to keep |
+| Empty tenant (17) | Landed locally. Farm seed file gone. Remote Farm rows wait on José |
 | Config MCP (18) | After human empty-tenant |
 | Deploy briefing pins + remote `0006` | Ops, when José asks |
 | Reset Grok Bot memory | Ops, anytime |

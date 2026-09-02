@@ -91,6 +91,26 @@ describe("session store", () => {
     ]);
   });
 
+  it("loadMe with empty memberships does not PATCH", async () => {
+    const principal = { id: "p1", type: "human", display_name: "Ada" };
+    const calls: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), "/api/me");
+      calls.push((init?.method ?? "GET").toUpperCase());
+      return Response.json({
+        principal,
+        memberships: [],
+        workspace_id: null,
+      });
+    };
+    const store = useSessionStore();
+    await store.loadMe();
+    assert.deepEqual(store.principal, principal);
+    assert.deepEqual(store.memberships, []);
+    assert.equal(store.workspaceId, null);
+    assert.deepEqual(calls, ["GET"]);
+  });
+
   it("second loadMe while in-flight does not call fetch twice", async () => {
     let calls = 0;
     let release!: (value: Response) => void;

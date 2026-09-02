@@ -61,6 +61,15 @@ onMounted(() => {
 
 const filtersOpen = ref(false);
 const workspaceDraft = computed(() => session.workspaceId ?? "");
+const workspaceName = ref("");
+
+async function submitFirstWorkspace(): Promise<void> {
+  const name = workspaceName.value.trim();
+  if (!name) return;
+  await config.createWorkspace(name);
+  if (config.status === "error") return;
+  workspaceName.value = "";
+}
 
 const showTree = computed(
   () =>
@@ -85,6 +94,12 @@ const wikiNav = computed(() => route.name === "wiki");
 const configNav = computed(() => route.name === "config");
 
 const toast = computed(() => {
+  if (session.principal && session.memberships.length === 0) {
+    if (config.status === "error") {
+      return { message: "Could not create workspace", tone: "error" as const };
+    }
+    return { message: "", tone: "info" as const };
+  }
   if (route.name === "room") {
     if (room.status === "loading") return { message: "Connecting", tone: "info" as const };
     if (room.status === "error") {
@@ -140,7 +155,21 @@ async function openConfig(): Promise<void> {
 <template>
   <main v-if="session.loaded">
     <h1 v-if="!session.principal">No session</h1>
-    <h1 v-else-if="session.memberships.length === 0">No workspace</h1>
+    <section
+      v-else-if="session.memberships.length === 0"
+      class="setup"
+    >
+      <h1>No workspace</h1>
+      <p class="who">{{ session.principal.display_name }}</p>
+      <form class="form" @submit.prevent="submitFirstWorkspace">
+        <PtField
+          v-model="workspaceName"
+          type="text"
+          label="Workspace name"
+        />
+        <PtButton type="submit" variant="primary">Create workspace</PtButton>
+      </form>
+    </section>
     <section v-else class="shell">
       <nav class="rail" aria-label="App">
         <p class="who">{{ session.principal.display_name }}</p>
@@ -251,6 +280,24 @@ h1 {
   margin: 0;
   padding: 1.5rem;
   font-size: 1.5rem;
+}
+
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 24rem;
+  padding: 1.5rem;
+}
+
+.setup h1 {
+  padding: 0;
+}
+
+.setup .form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .rail {

@@ -9,6 +9,8 @@ ProjThread is a **live workspace**. People and agents talk in a **room**. Each p
 
 This MCP server is catalog + wiki. **Chat is not here.**
 
+A human creates the first workspace in the PWA (session, no memberships). This MCP does not create organizations.
+
 | Layer | Holds |
 | --- | --- |
 | **Wiki** | Reusable knowledge. How *this* workspace works lives here, on **pins**. |

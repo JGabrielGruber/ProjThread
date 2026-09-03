@@ -457,18 +457,27 @@ function createServer(deps: Deps): McpServer {
     "wiki_create",
     {
       description:
-        "Tool to create a wiki page. Side effects: write.",
+        "Tool to create a wiki page. payload_kind may be markdown (default) or json. Do not use for blob. Search is title/summary only. Side effects: write.",
       inputSchema: {
         title: z.string(),
         type: z.string().optional(),
         summary: z.string().optional(),
         content: z.string().optional(),
+        payload_kind: z.enum(["markdown", "json"]).optional(),
         work_item_id: z.string().optional(),
         workspace_id: z.string().optional(),
       },
       annotations: WRITE,
     },
-    async ({ title, type, summary, content, work_item_id, workspace_id }) => {
+    async ({
+      title,
+      type,
+      summary,
+      content,
+      payload_kind,
+      work_item_id,
+      workspace_id,
+    }) => {
       const ws = await workspaceId(deps, workspace_id);
       if (typeof ws !== "string") return ws;
       return wrap(
@@ -477,7 +486,14 @@ function createServer(deps: Deps): McpServer {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: compactJson({ title, type, summary, content, work_item_id }),
+          body: compactJson({
+            title,
+            type,
+            summary,
+            content,
+            work_item_id,
+            payload_kind,
+          }),
         },
         "node",
       );

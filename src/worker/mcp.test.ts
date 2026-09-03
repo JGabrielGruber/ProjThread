@@ -696,6 +696,30 @@ describe("handleMcp", () => {
     assert.equal(got.content[0]?.text, markdown);
   });
 
+  it("wiki_create payload_kind json puts JSON text in content[0]", async () => {
+    const { sessionId, sessions, catalog, wiki } = await memberContext();
+    const created = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_create", {
+          title: "Meta",
+          payload_kind: "json",
+          content: '{"k":1}',
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(created.isError, true);
+    assert.equal(created.content[0]?.text, '{"k":1}');
+    const stored = JSON.parse(created.content[1]?.text ?? "{}") as {
+      node: { payload_kind?: string; content?: string };
+    };
+    assert.equal(stored.node.payload_kind, "json");
+    assert.equal(stored.node.content, undefined);
+  });
+
   it("compose_node includes without citing; cite_node cites without including", async () => {
     const { sessionId, sessions, catalog, wiki } = await memberContext();
 

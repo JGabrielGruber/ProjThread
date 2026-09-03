@@ -444,6 +444,187 @@ describe("handleWiki", () => {
     assert.equal(res.status, 400);
   });
 
+  it("POST payload_kind json stores canonical object", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Meta",
+          payload_kind: "json",
+          content: '{"url":"https://example.com"}',
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as {
+      node: { payload_kind: string; content: string };
+    };
+    assert.equal(body.node.payload_kind, "json");
+    assert.equal(body.node.content, '{"url":"https://example.com"}');
+  });
+
+  it("POST json invalid content is 400 and does not list", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Meta",
+          payload_kind: "json",
+          content: "{",
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+    const listed = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        headers: { cookie },
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const listBody = (await listed.json()) as { nodes: unknown[] };
+    assert.equal(listBody.nodes.length, 0);
+  });
+
+  it("POST json null content is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Meta",
+          payload_kind: "json",
+          content: "null",
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("PATCH json node content canonicalizes", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Meta",
+          payload_kind: "json",
+          content: '{"url":"https://example.com"}',
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ content: '{ "k" : 1 }' }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { node: { content: string } };
+    assert.equal(body.node.content, '{"k":1}');
+  });
+
+  it("PATCH json node primitive content is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Meta",
+          payload_kind: "json",
+          content: '{"k":1}',
+        }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ content: "1" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("PATCH payload_kind on markdown node is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as {
+      node: { id: string; payload_kind: string };
+    };
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ payload_kind: "json" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+    const got = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, { headers: { cookie } }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const body = (await got.json()) as { node: { payload_kind: string } };
+    assert.equal(body.node.payload_kind, "markdown");
+  });
+
   it("POST type nope is 400", async () => {
     const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
     const res = await handleWiki(

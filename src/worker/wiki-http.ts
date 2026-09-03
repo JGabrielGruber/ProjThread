@@ -2,6 +2,7 @@ import { newId } from "../lib/id.ts";
 import { sessionIdFromRequest } from "../lib/session-id.ts";
 import { descendantIds } from "../lib/project-tree.ts";
 import { wouldCycleIncludes } from "../lib/node-rel.ts";
+import { canonicalizeJson } from "../lib/wiki-json.ts";
 import {
   rejectContent,
   rejectSummary,
@@ -118,7 +119,8 @@ async function createNode(
   if (!isRecord(body)) {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
-  if ("payload_kind" in body && body.payload_kind !== "markdown") {
+  const payloadKind = parseCreatePayloadKind(body);
+  if (payloadKind === null) {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
   const type = parseType(body.type, true);
@@ -136,8 +138,19 @@ async function createNode(
   if (summary === false || rejectSummary(summary)) {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
-  const content = parseOptionalText(body, "content");
-  if (content === false || rejectContent(content)) {
+  const content = parseOptionalText(body, "content", payloadKind !== "json");
+  if (content === false) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  let storedContent = content;
+  if (payloadKind === "json" && content !== null) {
+    const canonical = canonicalizeJson(content);
+    if (canonical === null) {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+    storedContent = canonical;
+  }
+  if (rejectContent(storedContent)) {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
   const workItemId = parseOptionalId(body, "work_item_id");
@@ -157,10 +170,10 @@ async function createNode(
     workspace_id: workspaceId,
     organization_id: organizationId,
     type,
-    payload_kind: "markdown",
+    payload_kind: payloadKind,
     title,
     summary,
-    content,
+    content: storedContent,
     blob_key: null,
     mime_type: null,
     byte_size: null,
@@ -222,11 +235,29 @@ async function patchNode(
     patch.summary = summary;
   }
   if ("content" in body) {
-    const content = parseOptionalText(body, "content");
-    if (content === false || rejectContent(content)) {
+    const content = parseOptionalText(
+      body,
+      "content",
+      node.payload_kind !== "json",
+    );
+    if (content === false) {
       return Response.json({ error: "bad_request" }, { status: 400 });
     }
-    patch.content = content;
+    if (node.payload_kind === "json" && content !== null) {
+      const canonical = canonicalizeJson(content);
+      if (canonical === null) {
+        return Response.json({ error: "bad_request" }, { status: 400 });
+      }
+      if (rejectContent(canonical)) {
+        return Response.json({ error: "bad_request" }, { status: 400 });
+      }
+      patch.content = canonical;
+    } else {
+      if (rejectContent(content)) {
+        return Response.json({ error: "bad_request" }, { status: 400 });
+      }
+      patch.content = content;
+    }
   }
   if ("pinned" in body) {
     if (typeof body.pinned !== "boolean") {
@@ -337,13 +368,26 @@ function parseType(value: unknown, optional: boolean): NodeType | null {
   return value as NodeType;
 }
 
+function parseCreatePayloadKind(
+  body: Record<string, unknown>,
+): "markdown" | "json" | null {
+  if (!("payload_kind" in body) || body.payload_kind === undefined) {
+    return "markdown";
+  }
+  if (body.payload_kind === "markdown" || body.payload_kind === "json") {
+    return body.payload_kind;
+  }
+  return null;
+}
+
 function parseOptionalText(
   body: Record<string, unknown>,
   key: string,
+  strip = true,
 ): string | null | false {
   if (!(key in body) || body[key] === null) return null;
   if (typeof body[key] !== "string") return false;
-  return stripRawHtml(body[key]);
+  return strip ? stripRawHtml(body[key]) : body[key];
 }
 
 function parseOptionalId(

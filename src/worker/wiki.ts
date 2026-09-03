@@ -2,7 +2,7 @@ import type { IncludeEdge } from "../lib/node-rel.ts";
 import type { D1Database } from "./env.ts";
 
 export type NodeType = "note" | "decision" | "process" | "research";
-export type PayloadKind = "markdown" | "blob";
+export type PayloadKind = "markdown" | "json" | "blob";
 
 export type NodeRow = {
   id: string;

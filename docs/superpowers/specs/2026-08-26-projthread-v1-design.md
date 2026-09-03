@@ -156,7 +156,7 @@ A Node is a **vertex in the workspace graph**, not “a markdown file.” Two in
 | Semantic | `type` | Why it is in the corpus: `note` \| `decision` \| `process` \| `research` (v1 built-in) |
 | Payload | `payload_kind` | What the body is: `markdown` \| `json` \| `blob` |
 
-JSON as a first-class kind (not fenced markdown) is specified in `docs/superpowers/specs/2026-09-03-projthread-capture-design.md`. **This v1 tree still writes markdown only** until that spec’s slice 19 lands. Blob remains schema-ready; R2 unbound.
+JSON as a first-class kind (not fenced markdown) is specified in `docs/superpowers/specs/2026-09-03-projthread-capture-design.md`. Slice 19 writes `markdown` **or** `json`. Blob remains schema-ready; R2 unbound.
 
 A decision can be a Markdown page **or** a signed PDF. Same links to projects and work items. `summary` is always the agent-facing / card-facing field (Knowkey), including for blobs.
 
@@ -171,7 +171,7 @@ When `payload_kind = markdown`:
 - Render **on the client**; sanitize after parse.
 - Images **inside** Markdown: default off (no R2). External `https` images stay off until a slice says on.
 
-When `payload_kind = json` (capture spec slice 19): `content` is canonical JSON text (object or array). Pretty reader; source edit. Not this original wiki landing.
+When `payload_kind = json`: `content` is canonical JSON text (object or array). Pretty reader; source edit. See capture spec slice 19.
 
 When `payload_kind = blob` (later): reader is preview-by-mime or download; `content` may hold a Markdown caption. Not v1.
 
@@ -224,7 +224,7 @@ work_item_event(
 node(
   id, workspace_id, organization_id,
   type,           -- semantic: note | decision | process | research
-  payload_kind,   -- markdown | json | blob  (insert markdown until capture spec slice 19)
+  payload_kind,   -- markdown | json | blob  (insert markdown or json; blob still 400)
   title, summary,
   content,        -- markdown source; json canonical text; blob caption later
   blob_key, mime_type, byte_size, filename,  -- NULL in v1; R2 later

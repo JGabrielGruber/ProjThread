@@ -55,6 +55,7 @@ const TOOL_NAMES = [
   "compose_node",
   "cite_node",
   "attach_node_work_item",
+  "attach_node_project",
   "card_search",
   "card_get",
   "card_create",
@@ -718,6 +719,72 @@ describe("handleMcp", () => {
     };
     assert.equal(stored.node.payload_kind, "json");
     assert.equal(stored.node.content, undefined);
+  });
+
+  it("attach_node_project points a node without a card", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } =
+      await memberContext();
+    const created = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_create", { title: "Report" }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const createdBody = JSON.parse(created.content[1]?.text ?? "{}") as {
+      node: { id: string };
+    };
+    const first = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "attach_node_project", {
+          node_id: createdBody.node.id,
+          project_id: bundle.project.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(first.isError, true);
+    const firstJson = JSON.parse(first.content[0]?.text ?? "{}") as {
+      project_ids: string[];
+      work_item_ids: string[];
+    };
+    assert.deepEqual(firstJson.project_ids, [bundle.project.id]);
+    assert.deepEqual(firstJson.work_item_ids, []);
+
+    const second = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "attach_node_project", {
+          node_id: createdBody.node.id,
+          project_id: bundle.project.id,
+        }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(second.isError, true);
+
+    const read = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_read", { node_id: createdBody.node.id }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    const envelope = JSON.parse(read.content[1]?.text ?? "{}") as {
+      project_ids: string[];
+      node: { content?: string };
+    };
+    assert.deepEqual(envelope.project_ids, [bundle.project.id]);
+    assert.equal(envelope.node.content, undefined);
   });
 
   it("compose_node includes without citing; cite_node cites without including", async () => {

@@ -608,6 +608,25 @@ function createServer(deps: Deps): McpServer {
   );
 
   server.registerTool(
+    "attach_node_project",
+    {
+      description:
+        "Tool to point a wiki node at a project (not a card). Side effects: write.",
+      inputSchema: {
+        node_id: z.string(),
+        project_id: z.string(),
+      },
+      annotations: WRITE,
+    },
+    async ({ node_id, project_id }) =>
+      wrap(deps, `/api/nodes/${node_id}/projects`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ project_id }),
+      }),
+  );
+
+  server.registerTool(
     "card_search",
     {
       description:

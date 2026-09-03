@@ -102,6 +102,17 @@ describe("wiki store", () => {
     assert.deepEqual(await wiki.listNodeWorkItemIds("n1"), ["wi-1"]);
   });
 
+  it("linkNodeProject is inserted then exists with one id", async () => {
+    const wiki = memoryWikiStore();
+    await wiki.insertNode(farmNote());
+
+    assert.equal(await wiki.linkNodeProject("n1", "proj-farm"), "inserted");
+    assert.deepEqual(await wiki.listNodeProjectIds("n1"), ["proj-farm"]);
+
+    assert.equal(await wiki.linkNodeProject("n1", "proj-farm"), "exists");
+    assert.deepEqual(await wiki.listNodeProjectIds("n1"), ["proj-farm"]);
+  });
+
   it("include, ref, and attach stay independent", async () => {
     const wiki = memoryWikiStore();
     await wiki.insertNode(farmNote({ id: "n1", title: "Plan" }));
@@ -142,6 +153,11 @@ describe("wiki store", () => {
     assert.equal("content" in (bothIncludes.find((r) => r.id === "n2") ?? {}), false);
 
     assert.equal(await wiki.linkNodeWorkItem("n2", "wi-1"), "inserted");
+    assert.deepEqual(await wiki.listNodeWorkItemIds("n2"), ["wi-1"]);
+    assert.equal(await wiki.linkNodeProject("n1", "proj-farm"), "inserted");
+    assert.deepEqual(await wiki.listNodeProjectIds("n1"), ["proj-farm"]);
+    assert.deepEqual(await wiki.listNodeProjectIds("n2"), []);
+    assert.deepEqual(await wiki.listNodeWorkItemIds("n1"), []);
     assert.deepEqual(await wiki.listNodeWorkItemIds("n2"), ["wi-1"]);
     assert.equal((await wiki.listIncludes("n1")).length, 1);
     assert.equal((await wiki.listRefs("n1")).some((r) => r.id === "n3"), true);

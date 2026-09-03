@@ -51,6 +51,10 @@ export type RefRow = { id: string; title: string };
 export type WikiStore = {
   listNodes(workspaceId: string, projectIds?: string[]): Promise<NodeListRow[]>;
   listNodeProjectIds(nodeId: string): Promise<string[]>;
+  linkNodeProject(
+    nodeId: string,
+    projectId: string,
+  ): Promise<"inserted" | "exists">;
   getNode(id: string): Promise<NodeRow | null>;
   insertNode(row: NodeRow): Promise<void>;
   updateNode(id: string, patch: NodePatch): Promise<boolean>;
@@ -228,6 +232,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         .first<{ node_id: string }>();
       return row != null ? "inserted" : "exists";
     },
+    async linkNodeProject(nodeId, projectId) {
+      const row = await db
+        .prepare(
+          "INSERT OR IGNORE INTO node_project (node_id, project_id) VALUES (?, ?) RETURNING node_id",
+        )
+        .bind(nodeId, projectId)
+        .first<{ node_id: string }>();
+      return row != null ? "inserted" : "exists";
+    },
     async listNodesForWorkItem(workItemId) {
       const { results } = await db
         .prepare(
@@ -350,6 +363,12 @@ export function memoryWikiStore(): WikiStore {
         .filter((row) => row.node_id === nodeId)
         .map((row) => row.project_id)
         .sort();
+    },
+    async linkNodeProject(nodeId, projectId) {
+      const key = `${nodeId}:${projectId}`;
+      if (nodeProjects.has(key)) return "exists";
+      nodeProjects.set(key, { node_id: nodeId, project_id: projectId });
+      return "inserted";
     },
     async getNode(id) {
       const row = nodes.get(id);

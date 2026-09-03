@@ -39,7 +39,7 @@ Edges:
 
 - **`includes`** — ordered parts *of this report*.
 - **`ref`** — classification and kinship (existing process page, theme, another report). Cycles allowed.
-- **`node_project`** — point the report at a project at capture time (helps agents). Table exists; **write HTTP is not shipped** (list filter already reads it).
+- **`node_project`** — point the report at a project at capture time (helps agents). Table exists; **write HTTP shipped** (`POST /api/nodes/:id/projects`, GET `project_ids`, MCP `attach_node_project`; PWA filter-only).
 - **`node_work_item`** — only when it graduates to a card.
 
 Capture-time classification is light: semantic `type` (`note` / `research` is enough), a summary line, a **project** (select or create), optional `ref`s the human already knows. Agents do indexing. Do not invent a report ontology.

@@ -19,6 +19,6 @@ A human may create the first workspace in the PWA. Agents maintain structure: `w
 
 1. `session_briefing` (omit `workspace_id` if one membership).
 2. `wiki_read` each **pin** (id from briefing). Do not invent process the pins already hold.
-3. Search then read (`wiki_search` → `wiki_read`, `card_search` → `card_get`). File cards after search. Log working memory with `activity_log`. `wiki_write` only after `wiki_read` this turn.
+3. Search then read (`wiki_search` → `wiki_read`, `card_search` → `card_get`). File cards after search. Log working memory with `activity_log`. `wiki_write` only after `wiki_read` this turn. After create/read, `attach_node_project` points a report at a project without filing a card. Cards stay `attach_node_work_item`.
 
 Ids are stable. Names are for search.

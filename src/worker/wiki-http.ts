@@ -96,6 +96,9 @@ export async function handleWiki(
     if (nodePath.tail === "work-items" && request.method === "POST") {
       return linkWorkItem(request, catalog, wiki, node);
     }
+    if (nodePath.tail === "projects" && request.method === "POST") {
+      return linkProject(request, catalog, wiki, node);
+    }
     if (nodePath.tail === "includes" && request.method === "POST") {
       return includeChild(request, wiki, node);
     }
@@ -292,6 +295,24 @@ async function linkWorkItem(
   return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
 }
 
+async function linkProject(
+  request: Request,
+  catalog: CatalogStore,
+  wiki: WikiStore,
+  node: NodeRow,
+): Promise<Response> {
+  const body = await readJson(request);
+  if (!isRecord(body) || typeof body.project_id !== "string" || body.project_id === "") {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const project = await catalog.getProject(body.project_id);
+  if (!project || project.workspace_id !== node.workspace_id) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const result = await wiki.linkNodeProject(node.id, body.project_id);
+  return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
+}
+
 async function includeChild(
   request: Request,
   wiki: WikiStore,
@@ -352,12 +373,16 @@ async function nodeResponse(
   node: NodeRow,
   status = 200,
 ): Promise<Response> {
-  const [work_item_ids, includes, refs] = await Promise.all([
+  const [work_item_ids, project_ids, includes, refs] = await Promise.all([
     wiki.listNodeWorkItemIds(node.id),
+    wiki.listNodeProjectIds(node.id),
     wiki.listIncludes(node.id),
     wiki.listRefs(node.id),
   ]);
-  return Response.json({ node, work_item_ids, includes, refs }, { status });
+  return Response.json(
+    { node, work_item_ids, project_ids, includes, refs },
+    { status },
+  );
 }
 
 function parseType(value: unknown, optional: boolean): NodeType | null {
@@ -491,7 +516,7 @@ function matchWorkspaceNodes(pathname: string): string | null {
 
 function matchNodePath(
   pathname: string,
-): { id: string; tail: "work-items" | "includes" | "refs" | null } | null {
+): { id: string; tail: "work-items" | "includes" | "refs" | "projects" | null } | null {
   const prefix = "/api/nodes/";
   if (!pathname.startsWith(prefix)) return null;
   const rest = pathname.slice(prefix.length);
@@ -503,7 +528,10 @@ function matchNodePath(
   const tail = rest.slice(slash + 1);
   if (
     !id ||
-    (tail !== "work-items" && tail !== "includes" && tail !== "refs")
+    (tail !== "work-items" &&
+      tail !== "includes" &&
+      tail !== "refs" &&
+      tail !== "projects")
   ) {
     return null;
   }

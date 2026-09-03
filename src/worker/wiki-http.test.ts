@@ -403,11 +403,13 @@ describe("handleWiki", () => {
     const body = (await res.json()) as {
       node: { content: string };
       work_item_ids: string[];
+      project_ids: string[];
       includes: unknown[];
       refs: unknown[];
     };
     assert.equal(body.node.content, "# Hi");
     assert.deepEqual(body.work_item_ids, []);
+    assert.deepEqual(body.project_ids, []);
     assert.deepEqual(body.includes, []);
     assert.deepEqual(body.refs, []);
   });
@@ -835,6 +837,132 @@ describe("handleWiki", () => {
     assert.equal(second.status, 200);
     const body = (await second.json()) as { work_item_ids: string[] };
     assert.deepEqual(body.work_item_ids, ["wi-1"]);
+  });
+
+  it("POST projects is 201 then 200 with one id", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Report" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+
+    const first = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/projects`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ project_id: bundle.project.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(first.status, 201);
+
+    const second = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/projects`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ project_id: bundle.project.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(second.status, 200);
+    const body = (await second.json()) as {
+      project_ids: string[];
+      work_item_ids: string[];
+    };
+    assert.deepEqual(body.project_ids, [bundle.project.id]);
+    assert.deepEqual(body.work_item_ids, []);
+  });
+
+  it("POST projects foreign workspace is 400", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    catalog.seedProject({
+      id: "proj-other",
+      workspace_id: "ws-other",
+      organization_id: bundle.organization.id,
+      parent_id: null,
+      name: "Other",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Report" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+    const res = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/projects`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ project_id: "proj-other" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it("GET nodes ?project_id= matches node_project without a card", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Pointed" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+    const linked = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/projects`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ project_id: bundle.project.id }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    assert.equal(linked.status, 201);
+
+    const filtered = await handleWiki(
+      new Request(
+        `${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes?project_id=${bundle.project.id}`,
+        { headers: { cookie } },
+      ),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const body = (await filtered.json()) as { nodes: { title: string }[] };
+    assert.ok(body.nodes.some((n) => n.title === "Pointed"));
+    assert.equal("project_ids" in (body.nodes[0] ?? {}), false);
   });
 
   it("GET fresh node has empty includes and refs", async () => {

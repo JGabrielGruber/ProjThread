@@ -1,0 +1,7 @@
+# Project-scoped Grok config. Bearer is expanded from the environment
+# (see .grok/secrets.env.example). Do not put a session id in this file.
+
+[mcp_servers.projthread]
+url = "https://projthread.jgabrielgruber.workers.dev/mcp"
+enabled = true
+headers = { "Authorization" = "Bearer ${PROJTHREAD_SESSION}" }

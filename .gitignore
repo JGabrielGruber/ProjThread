@@ -5,3 +5,5 @@ dist/
 worker-configuration.d.ts
 *.log
 .DS_Store
+.grok/secrets.env
+

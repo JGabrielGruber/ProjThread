@@ -6,7 +6,7 @@ Read this file first after compact. It is the project map, not the archive.
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie **or** `Authorization: Bearer <session.id>` on app `/api/*`, Bearer on `/mcp`, cookie on WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy pages. Grow to `pages/` `components/` `models/` `services/` and a real router (see spec **PWA product**). **PWA** (kanban + room + **wiki** + **config**) and **super-admin** = our primitives, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
-**Now:** no open slice (see `docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start a slice that STATUS does not name.
+**Now:** plan 19 (`docs/STATUS.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start a slice that STATUS does not name. Do not start capture clients, Queues, or R2 in this slice.
 
 ## Pickup (coding agents, including Grok Build)
 
@@ -30,6 +30,7 @@ Stop rules:
 | --- | --- |
 | What is live / what to start | `docs/STATUS.md` |
 | **v1 spec** | `docs/superpowers/specs/2026-08-26-projthread-v1-design.md` |
+| **Capture / ingest** | `docs/superpowers/specs/2026-09-03-projthread-capture-design.md` |
 | Landed catalog plan | `docs/superpowers/plans/2026-08-26-projthread-catalog.md` |
 | Plan index | `docs/superpowers/plans/2026-08-26-projthread-v1.md` |
 | Corrected working model (not a spec) | `docs/context/2026-08-26-working-model.md` |
@@ -64,7 +65,7 @@ Spec is approved. Implement **only** the open plan in `docs/STATUS.md`. If there
 - Durable Object is a **coordination atom** (hibernatable WebSockets, serial fan-in, **live message log**). Keyed by `work_item.id`. Replaceable. Do not put authoritative status only in DO SQLite.
 - Status / Activity writes: persist to D1 first (snapshot + `work_item_event`), then append a **system frame** on the room DO so the event sits on the tape at room seq.
 - **Activity** is work-item-local (`decision`, `occurrence`, `note`, card moves). Rendered **in the chat timeline** at that seq. Activity-only filter = preview of the chat archive. Not a second wiki.
-- **Nodes** are workspace-graph vertices. Semantic `type` ≠ `payload_kind` (`markdown` \| `blob`). v1 writes markdown only; blob columns reserved, R2 unbound. Markdown read view is phone-calm. M2M links to projects and work items. Not the chat archive.
+- **Nodes** are workspace-graph vertices. Semantic `type` ≠ `payload_kind` (`markdown` \| `json` \| `blob`). Writes today: markdown only until plan 19. `json` is specified (`docs/superpowers/specs/2026-09-03-projthread-capture-design.md`); blob columns reserved, R2 unbound. Markdown read view is phone-calm. M2M links to projects and work items. Not the chat archive.
 - Principals include humans **and** agents. Schema must not assume “user = Google account”. Agents are a **paid-plan load class**, not a v1 feature.
 - **Auth (v1 workaround):** Cloudflare Access on `/admin` and `/api/admin/*`. Admin **vends** a D1 `session`: **Enter as** sets HttpOnly `pt_session`; **Issue token** (`set_cookie: false`) returns the id for `Authorization: Bearer`. Same origin. App HTTP accepts cookie or Bearer (Bearer present → no cookie fallback). WS upgrade uses the cookie. Not the destination login. Distinct agent OAuth later.
 - Vectorize, R2, Chief-of-Staff agent, MCP OAuth, and room MCP are **named absences** until a version spec takes them. Catalog `/mcp` is live (Bearer façade: briefing, wiki/card search, Activity; still wraps catalog/wiki HTTP; node markdown in `content[0]`). Operators: `.grok/skills/using-projthread/SKILL.md`. Implementers: `docs/agent-facing.md`.

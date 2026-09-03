@@ -21,5 +21,6 @@ export type WikiCreate = {
   title: string;
   content?: string;
   type?: string;
+  payload_kind?: "markdown" | "json";
   work_item_id?: string;
 };

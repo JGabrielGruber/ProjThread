@@ -32,9 +32,10 @@ export function createNode(
   workspaceId: string,
   input: WikiCreate,
 ): Promise<NodePayload> {
-  const payload: Record<string, string> = { title: input.title };
+  const payload: Record<string, unknown> = { title: input.title };
   if (input.content !== undefined) payload.content = input.content;
   if (input.type !== undefined) payload.type = input.type;
+  if (input.payload_kind !== undefined) payload.payload_kind = input.payload_kind;
   if (input.work_item_id !== undefined) payload.work_item_id = input.work_item_id;
   return apiJson(`/api/workspaces/${workspaceId}/nodes`, {
     method: "POST",

@@ -11,6 +11,7 @@ import { useSessionStore } from "../stores/session.ts";
 import { useWikiStore } from "../stores/wiki.ts";
 
 const NODE_TYPES = ["note", "decision", "process", "research"] as const;
+const PAYLOAD_KINDS = ["markdown", "json"] as const;
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +23,7 @@ const editing = ref(false);
 const createOpen = ref(false);
 const draftTitle = ref("");
 const draftType = ref<(typeof NODE_TYPES)[number]>("note");
+const draftKind = ref<(typeof PAYLOAD_KINDS)[number]>("markdown");
 const draftContent = ref("");
 const linkId = ref("");
 const includeId = ref("");
@@ -50,6 +52,15 @@ const rendered = computed(() =>
   renderMarkdown(wiki.node?.content ?? ""),
 );
 
+const jsonPretty = computed(() => {
+  const raw = wiki.node?.content ?? "";
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+});
+
 async function openNode(id: string): Promise<void> {
   await router.replace({ name: "wiki", query: { node: id } });
 }
@@ -61,6 +72,7 @@ async function back(): Promise<void> {
 function openCreate(): void {
   draftTitle.value = "";
   draftType.value = "note";
+  draftKind.value = "markdown";
   draftContent.value = "";
   linkId.value = "";
   createOpen.value = true;
@@ -78,11 +90,13 @@ async function create(): Promise<void> {
     title: string;
     type: string;
     content: string;
+    payload_kind: "markdown" | "json";
     work_item_id?: string;
   } = {
     title,
     type: draftType.value,
     content: draftContent.value,
+    payload_kind: draftKind.value,
   };
   const workItemId = linkId.value.trim();
   if (workItemId) input.work_item_id = workItemId;
@@ -159,6 +173,9 @@ async function togglePin(id: string, pinned: number): Promise<void> {
           </button>
           <template #meta>
             <span class="muted">{{ row.type }}</span>
+            <span v-if="row.payload_kind !== 'markdown'" class="muted">{{
+              row.payload_kind
+            }}</span>
             <PtButton
               type="button"
               variant="compact"
@@ -195,6 +212,11 @@ async function togglePin(id: string, pinned: number): Promise<void> {
               {{ type }}
             </option>
           </PtField>
+          <PtField v-model="draftKind" as="select" label="Kind">
+            <option v-for="kind in PAYLOAD_KINDS" :key="kind" :value="kind">
+              {{ kind }}
+            </option>
+          </PtField>
           <PtField v-model="draftContent" as="textarea" label="Content" />
           <PtField v-model="linkId" type="text" label="Work item id" />
           <PtButton type="submit" variant="primary" :disabled="wiki.status !== 'ready'">Create</PtButton>
@@ -205,7 +227,11 @@ async function togglePin(id: string, pinned: number): Promise<void> {
 
     <template v-else-if="wiki.node">
       <template v-if="!editing">
-        <article class="wiki-read" v-html="rendered" />
+        <pre
+          v-if="wiki.node.payload_kind === 'json'"
+          class="wiki-json"
+        >{{ jsonPretty }}</pre>
+        <article v-else class="wiki-read" v-html="rendered" />
         <PtButton type="button" variant="primary" class="compact" :disabled="wiki.status !== 'ready'" @click="startEdit">
           Edit
         </PtButton>
@@ -358,6 +384,21 @@ h2 {
   padding: 0;
   background: transparent;
   border: none;
+}
+
+.wiki-json {
+  max-width: var(--measure);
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
 }
 
 .wiki-read :deep(a) {

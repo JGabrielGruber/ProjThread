@@ -112,6 +112,53 @@ describe("wiki store", () => {
     assert.deepEqual(posts[0]?.body, { title: "Egg", content: "# Hi" });
   });
 
+  it("createNode POSTs payload_kind when provided", async () => {
+    const posts: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/workspaces/ws1/nodes" && method === "GET") {
+        return Response.json({ nodes: [] });
+      }
+      if (url === "/api/workspaces/ws1/nodes" && method === "POST") {
+        posts.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return Response.json(
+          {
+            node: {
+              id: "n2",
+              workspace_id: "ws1",
+              organization_id: "o1",
+              type: "note",
+              payload_kind: "json",
+              title: "Meta",
+              summary: null,
+              content: '{"k":1}',
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              pinned: 0,
+            },
+            work_item_ids: [],
+          },
+          { status: 201 },
+        );
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useWikiStore();
+    await store.loadList("ws1");
+    await store.createNode({
+      title: "Meta",
+      content: '{"k":1}',
+      payload_kind: "json",
+    });
+    assert.equal(posts.length, 1);
+    assert.deepEqual(posts[0]?.body, {
+      title: "Meta",
+      content: '{"k":1}',
+      payload_kind: "json",
+    });
+  });
+
   it("openNode GETs node and sets content", async () => {
     const urls: string[] = [];
     globalThis.fetch = async (input) => {

@@ -26,12 +26,12 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **17. Empty tenant** | `2026-09-02-projthread-empty-tenant.md` | First-workspace PWA; retire Farm seed. Remote D1 drop is ops |
 | **18. Config MCP** | `2026-09-02-projthread-config-mcp.md` | Bot members/projects/stages/`workspace_create`; wrap catalog HTTP; no principal mint |
 
-**Now:** no open slice. Capture spec approved (`2026-09-03-projthread-capture-design.md`). Park plan 8. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start slices 20–24 until José opens a plan. Do not bind Queues/R2.
+**Now:** execute plan **20** `docs/superpowers/plans/2026-09-03-projthread-node-project.md`. Capture spec approved (`2026-09-03-projthread-capture-design.md`). Park plan 8. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start slices 21–24. Do not bind Queues/R2.
 
 | Plan | File | Ships |
 | --- | --- | --- |
 | **19. payload_kind json** | `2026-09-03-projthread-payload-json.md` | JSON wiki nodes (HTTP, PWA reader, MCP). Blob still 400. **Landed** (local; remote after `0008`). |
-| 20. `node_project` write | *(not written)* | POST attach project; GET `project_ids`; MCP wrap |
+| **20. `node_project` write** | `2026-09-03-projthread-node-project.md` | POST attach project; GET `project_ids`; MCP wrap. **Open.** |
 | 21. Notify | *(not written)* | Queue doorbell; subscription X on kinds Y,Z; n=1 |
 | 22. R2 + blob | *(not written)* | Upload; screenshot files |
 | 23. Capture extension | *(not written)* | Proper client; project select/create; report graph |

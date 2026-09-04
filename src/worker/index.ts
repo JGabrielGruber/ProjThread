@@ -19,6 +19,7 @@ import {
   isAdminPath,
   isAppHistoryPath,
 } from "./shell.ts";
+import { r2BlobStore } from "./blobs.ts";
 import { handleWiki } from "./wiki-http.ts";
 import { d1WikiStore } from "./wiki.ts";
 
@@ -31,9 +32,19 @@ export default {
     const catalog = d1CatalogStore(env.DB);
     const wiki = d1WikiStore(env.DB);
     const notify = d1NotifyStore(env.DB);
+    const blobs = env.BLOBS ? r2BlobStore(env.BLOBS) : null;
 
     if (url.pathname === "/mcp") {
-      return handleMcp(request, env, store, catalog, wiki, ctx, notify);
+      return handleMcp(
+        request,
+        env,
+        store,
+        catalog,
+        wiki,
+        ctx,
+        notify,
+        blobs ?? undefined,
+      );
     }
 
     if (url.pathname.startsWith("/api/admin")) {
@@ -54,7 +65,7 @@ export default {
       /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname) ||
       /^\/api\/work-items\/[^/]+\/nodes$/.test(url.pathname)
     ) {
-      return handleWiki(request, env, store, catalog, wiki, notify);
+      return handleWiki(request, env, store, catalog, wiki, notify, blobs);
     }
 
     if (/^\/api\/workspaces\/[^/]+\/notify-subscriptions(?:\/[^/]+)?$/.test(url.pathname)) {

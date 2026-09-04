@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import { parseBearerSessionId } from "../lib/session-id.ts";
+import type { BlobStore } from "./blobs.ts";
+import { memoryBlobStore } from "./blobs.ts";
 import type { CatalogStore } from "./catalog.ts";
 import { handleCatalog } from "./catalog-http.ts";
 import type { Env } from "./env.ts";
@@ -43,6 +45,7 @@ type Deps = {
   catalog: CatalogStore;
   wiki: WikiStore;
   notify: NotifyStore;
+  blobs: BlobStore;
   sessionId: string;
 };
 
@@ -132,6 +135,7 @@ async function wrap(
       deps.catalog,
       deps.wiki,
       deps.notify,
+      deps.blobs,
     );
   } else if (
     /^\/api\/workspaces\/[^/]+\/notify-subscriptions(?:\/[^/]+)?$/.test(
@@ -173,9 +177,6 @@ function nodeEnvelope(text: string): { markdown: string; envelope: string } {
     const {
       content: _content,
       blob_key: _blobKey,
-      mime_type: _mimeType,
-      byte_size: _byteSize,
-      filename: _filename,
       ...rest
     } = parsed.node;
     envelope.node = rest;
@@ -1175,6 +1176,7 @@ export async function handleMcp(
   wiki: WikiStore,
   ctx: WorkerContext = noopCtx,
   notify: NotifyStore = memoryNotifyStore(),
+  blobs: BlobStore = memoryBlobStore(),
 ): Promise<Response> {
   const incoming = withMcpHttp(request);
 
@@ -1187,6 +1189,7 @@ export async function handleMcp(
           catalog,
           wiki,
           notify,
+          blobs,
           sessionId: "preflight",
         }),
       MCP_OPTIONS,
@@ -1203,7 +1206,8 @@ export async function handleMcp(
   }
 
   return createMcpHandler(
-    () => createServer({ env, sessions, catalog, wiki, notify, sessionId }),
+    () =>
+      createServer({ env, sessions, catalog, wiki, notify, blobs, sessionId }),
     MCP_OPTIONS,
   )(incoming, env, ctx);
 }

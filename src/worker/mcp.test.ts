@@ -726,6 +726,52 @@ describe("handleMcp", () => {
     assert.equal(stored.node.content, undefined);
   });
 
+  it("wiki_read blob caption in content[0]; envelope keeps mime, strips blob_key", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle } = await memberContext();
+    await wiki.insertNode({
+      id: "n-blob",
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      type: "note",
+      payload_kind: "blob",
+      title: "Shot",
+      summary: null,
+      content: "Front yard",
+      blob_key: "ws-farm/n-blob",
+      mime_type: "image/png",
+      byte_size: 4,
+      filename: "shot.png",
+      created_at: "2026-01-02T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      pinned: 0,
+    });
+    const result = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "wiki_read", { node_id: "n-blob" }),
+        env,
+        sessions,
+        catalog,
+        wiki,
+      ),
+    );
+    assert.notEqual(result.isError, true);
+    assert.equal(result.content[0]?.text, "Front yard");
+    const payload = JSON.parse(result.content[1]?.text ?? "{}") as {
+      node: {
+        mime_type?: string;
+        byte_size?: number;
+        filename?: string;
+        blob_key?: string;
+        content?: string;
+      };
+    };
+    assert.equal(payload.node.mime_type, "image/png");
+    assert.equal(payload.node.byte_size, 4);
+    assert.equal(payload.node.filename, "shot.png");
+    assert.equal(payload.node.blob_key, undefined);
+    assert.equal(payload.node.content, undefined);
+  });
+
   it("attach_node_project points a node without a card", async () => {
     const { sessionId, sessions, catalog, wiki, bundle } =
       await memberContext();

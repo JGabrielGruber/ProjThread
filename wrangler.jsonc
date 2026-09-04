@@ -31,6 +31,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "BLOBS",
+      "bucket_name": "projthread-blobs"
+    }
+  ],
   "queues": {
     "producers": [
       { "binding": "NOTIFY", "queue": "projthread-notify" }

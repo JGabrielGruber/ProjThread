@@ -11,7 +11,7 @@ import { useSessionStore } from "../stores/session.ts";
 import { useWikiStore } from "../stores/wiki.ts";
 
 const NODE_TYPES = ["note", "decision", "process", "research"] as const;
-const PAYLOAD_KINDS = ["markdown", "json"] as const;
+const PAYLOAD_KINDS = ["markdown", "json", "blob"] as const;
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +25,7 @@ const draftTitle = ref("");
 const draftType = ref<(typeof NODE_TYPES)[number]>("note");
 const draftKind = ref<(typeof PAYLOAD_KINDS)[number]>("markdown");
 const draftContent = ref("");
+const draftFile = ref<File | null>(null);
 const linkId = ref("");
 const includeId = ref("");
 const citeId = ref("");
@@ -61,6 +62,13 @@ const jsonPretty = computed(() => {
   }
 });
 
+const blobSrc = computed(() =>
+  wiki.node ? `/api/nodes/${wiki.node.id}/blob` : "",
+);
+const blobIsImage = computed(() =>
+  (wiki.node?.mime_type ?? "").startsWith("image/"),
+);
+
 async function openNode(id: string): Promise<void> {
   await router.replace({ name: "wiki", query: { node: id } });
 }
@@ -74,8 +82,14 @@ function openCreate(): void {
   draftType.value = "note";
   draftKind.value = "markdown";
   draftContent.value = "";
+  draftFile.value = null;
   linkId.value = "";
   createOpen.value = true;
+}
+
+function onDraftFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  draftFile.value = input.files?.[0] ?? null;
 }
 
 function cancelCreate(): void {
@@ -86,23 +100,36 @@ async function create(): Promise<void> {
   if (wiki.status !== "ready") return;
   const title = draftTitle.value.trim();
   if (!title) return;
-  const input: {
-    title: string;
-    type: string;
-    content: string;
-    payload_kind: "markdown" | "json";
-    work_item_id?: string;
-  } = {
-    title,
-    type: draftType.value,
-    content: draftContent.value,
-    payload_kind: draftKind.value,
-  };
   const workItemId = linkId.value.trim();
-  if (workItemId) input.work_item_id = workItemId;
-  await wiki.createNode(input);
+  if (draftKind.value === "blob") {
+    if (!draftFile.value) return;
+    const form = new FormData();
+    form.set("title", title);
+    form.set("type", draftType.value);
+    form.set("payload_kind", "blob");
+    form.set("content", draftContent.value);
+    if (workItemId) form.set("work_item_id", workItemId);
+    form.set("file", draftFile.value);
+    await wiki.createBlobNode(form);
+  } else {
+    const input: {
+      title: string;
+      type: string;
+      content: string;
+      payload_kind: "markdown" | "json";
+      work_item_id?: string;
+    } = {
+      title,
+      type: draftType.value,
+      content: draftContent.value,
+      payload_kind: draftKind.value,
+    };
+    if (workItemId) input.work_item_id = workItemId;
+    await wiki.createNode(input);
+  }
   draftTitle.value = "";
   draftContent.value = "";
+  draftFile.value = null;
   linkId.value = "";
   createOpen.value = false;
   if (wiki.node) await openNode(wiki.node.id);
@@ -217,7 +244,22 @@ async function togglePin(id: string, pinned: number): Promise<void> {
               {{ kind }}
             </option>
           </PtField>
-          <PtField v-model="draftContent" as="textarea" label="Content" />
+          <label v-if="draftKind === 'blob'" class="file">
+            File
+            <input type="file" @change="onDraftFile" />
+          </label>
+          <PtField
+            v-if="draftKind === 'blob'"
+            v-model="draftContent"
+            as="textarea"
+            label="Caption"
+          />
+          <PtField
+            v-else
+            v-model="draftContent"
+            as="textarea"
+            label="Content"
+          />
           <PtField v-model="linkId" type="text" label="Work item id" />
           <PtButton type="submit" variant="primary" :disabled="wiki.status !== 'ready'">Create</PtButton>
           <PtButton type="button" @click="cancelCreate">Cancel</PtButton>
@@ -227,10 +269,24 @@ async function togglePin(id: string, pinned: number): Promise<void> {
 
     <template v-else-if="wiki.node">
       <template v-if="!editing">
-        <pre
-          v-if="wiki.node.payload_kind === 'json'"
-          class="wiki-json"
-        >{{ jsonPretty }}</pre>
+        <template v-if="wiki.node.payload_kind === 'json'">
+          <pre class="wiki-json">{{ jsonPretty }}</pre>
+        </template>
+        <template v-else-if="wiki.node.payload_kind === 'blob'">
+          <img
+            v-if="blobIsImage"
+            class="wiki-blob"
+            :src="blobSrc"
+            :alt="wiki.node.title"
+          />
+          <p v-else class="wiki-blob-file">
+            <a :href="blobSrc" :download="wiki.node.filename ?? undefined">{{
+              wiki.node.filename ?? "Download"
+            }}</a>
+            <span class="muted">{{ wiki.node.mime_type }} · {{ wiki.node.byte_size }}</span>
+          </p>
+          <article v-if="wiki.node.content" class="wiki-read" v-html="rendered" />
+        </template>
         <article v-else class="wiki-read" v-html="rendered" />
         <PtButton type="button" variant="primary" class="compact" :disabled="wiki.status !== 'ready'" @click="startEdit">
           Edit
@@ -278,7 +334,7 @@ async function togglePin(id: string, pinned: number): Promise<void> {
           v-model="draftContent"
           as="textarea"
           class="source"
-          label="Source"
+          :label="wiki.node.payload_kind === 'blob' ? 'Caption' : 'Source'"
         />
         <div class="actions">
           <PtButton type="button" variant="primary" :disabled="wiki.status !== 'ready'" @click="save">
@@ -384,6 +440,28 @@ h2 {
   padding: 0;
   background: transparent;
   border: none;
+}
+
+.wiki-blob {
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 1rem;
+}
+
+.wiki-blob-file {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0 0 1rem;
+}
+
+.file {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 
 .wiki-json {

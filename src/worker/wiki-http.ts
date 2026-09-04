@@ -11,6 +11,7 @@ import {
 } from "../lib/wiki-text.ts";
 import type { CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
+import { enqueueIfMatch, type NotifyStore } from "./notify.ts";
 import { resolveSession, type SessionStore } from "./session.ts";
 import type { NodeListRow, NodeRow, NodeType, WikiStore } from "./wiki.ts";
 
@@ -27,6 +28,7 @@ export async function handleWiki(
   sessions: SessionStore,
   catalog: CatalogStore,
   wiki: WikiStore,
+  notify: NotifyStore | null = null,
 ): Promise<Response> {
   const sessionId = sessionIdFromRequest(request);
   if (!sessionId) {
@@ -69,7 +71,15 @@ export async function handleWiki(
       return Response.json({ nodes });
     }
     if (request.method === "POST") {
-      return createNode(request, workspaceId, membership.organization_id, catalog, wiki);
+      return createNode(
+        request,
+        env,
+        workspaceId,
+        membership.organization_id,
+        catalog,
+        wiki,
+        notify,
+      );
     }
     return Response.json({ error: "not_found" }, { status: 404 });
   }
@@ -91,7 +101,7 @@ export async function handleWiki(
       return nodeResponse(wiki, node);
     }
     if (!nodePath.tail && request.method === "PATCH") {
-      return patchNode(request, wiki, node);
+      return patchNode(request, env, wiki, node, notify);
     }
     if (nodePath.tail === "work-items" && request.method === "POST") {
       return linkWorkItem(request, catalog, wiki, node);
@@ -100,10 +110,10 @@ export async function handleWiki(
       return linkProject(request, catalog, wiki, node);
     }
     if (nodePath.tail === "includes" && request.method === "POST") {
-      return includeChild(request, wiki, node);
+      return includeChild(request, env, wiki, node, notify);
     }
     if (nodePath.tail === "refs" && request.method === "POST") {
-      return refNode(request, wiki, node);
+      return refNode(request, env, wiki, node, notify);
     }
     return Response.json({ error: "not_found" }, { status: 404 });
   }
@@ -113,10 +123,12 @@ export async function handleWiki(
 
 async function createNode(
   request: Request,
+  env: Env,
   workspaceId: string,
   organizationId: string,
   catalog: CatalogStore,
   wiki: WikiStore,
+  notify: NotifyStore | null,
 ): Promise<Response> {
   const body = await readJson(request);
   if (!isRecord(body)) {
@@ -189,13 +201,16 @@ async function createNode(
   if (workItemId) {
     await wiki.linkNodeWorkItem(row.id, workItemId);
   }
+  await enqueueIfMatch(env.NOTIFY, notify, "node.created", row);
   return nodeResponse(wiki, row, 201);
 }
 
 async function patchNode(
   request: Request,
+  env: Env,
   wiki: WikiStore,
   node: NodeRow,
+  notify: NotifyStore | null,
 ): Promise<Response> {
   const body = await readJson(request);
   if (!isRecord(body)) {
@@ -274,6 +289,7 @@ async function patchNode(
   if (!updated) {
     return Response.json({ error: "not_found" }, { status: 404 });
   }
+  await enqueueIfMatch(env.NOTIFY, notify, "node.updated", updated);
   return nodeResponse(wiki, updated);
 }
 
@@ -315,8 +331,10 @@ async function linkProject(
 
 async function includeChild(
   request: Request,
+  env: Env,
   wiki: WikiStore,
   node: NodeRow,
+  notify: NotifyStore | null,
 ): Promise<Response> {
   const body = await readJson(request);
   if (!isRecord(body) || typeof body.child_id !== "string" || body.child_id === "") {
@@ -342,13 +360,18 @@ async function includeChild(
     position = max + 1;
   }
   const result = await wiki.includeNode(node.id, child.id, position);
+  if (result === "inserted") {
+    await enqueueIfMatch(env.NOTIFY, notify, "node.included", node);
+  }
   return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
 }
 
 async function refNode(
   request: Request,
+  env: Env,
   wiki: WikiStore,
   node: NodeRow,
+  notify: NotifyStore | null,
 ): Promise<Response> {
   const body = await readJson(request);
   if (!isRecord(body) || typeof body.to_id !== "string" || body.to_id === "") {
@@ -365,6 +388,9 @@ async function refNode(
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
   const result = await wiki.refNode(node.id, target.id);
+  if (result === "inserted") {
+    await enqueueIfMatch(env.NOTIFY, notify, "node.cited", node);
+  }
   return nodeResponse(wiki, node, result === "inserted" ? 201 : 200);
 }
 

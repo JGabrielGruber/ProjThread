@@ -30,11 +30,20 @@ export type RoomNamespace = {
   getByName(name: string): RoomStub;
 };
 
+export type NotifyQueueBinding = {
+  send(body: {
+    kind: string;
+    node_id: string;
+    workspace_id: string;
+  }): Promise<void>;
+};
+
 export type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
   APP_ORIGIN: string;
   Room: RoomNamespace;
+  NOTIFY?: NotifyQueueBinding;
   ADMIN_DEV_SECRET?: string;
   POLICY_AUD?: string;
   TEAM_DOMAIN?: string;

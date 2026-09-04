@@ -15,6 +15,11 @@ import {
 } from "./session.ts";
 import { COOKIE_NAME } from "../lib/cookies.ts";
 import { handleWiki } from "./wiki-http.ts";
+import {
+  memoryNotifyStore,
+  type NotifyMessage,
+  type NotifyStore,
+} from "./notify.ts";
 import { memoryWikiStore, type WikiStore } from "./wiki.ts";
 
 const ORIGIN = "http://127.0.0.1:8787";
@@ -1615,6 +1620,298 @@ describe("handleWiki", () => {
       body.nodes.map((n) => n.title).sort(),
       ["Child note"],
     );
+  });
+
+  async function seedNotify(
+    bundle: TenantBundle,
+    kinds: NotifyMessage["kind"][] = [
+      "node.created",
+      "node.updated",
+      "node.included",
+      "node.cited",
+    ],
+  ): Promise<{
+    notify: NotifyStore;
+    sent: NotifyMessage[];
+    envWithQueue: Env;
+  }> {
+    const notify = memoryNotifyStore();
+    await notify.insertSubscription({
+      id: "sub1",
+      workspace_id: bundle.workspace.id,
+      organization_id: bundle.organization.id,
+      url: "https://bot.example/hook",
+      secret: "whsec_dGVzdA==",
+      kinds,
+      enabled: 1,
+      created_at: bundle.workspace.created_at,
+      created_by: bundle.membership.principal_id,
+    });
+    const sent: NotifyMessage[] = [];
+    const envWithQueue = {
+      ...env,
+      NOTIFY: {
+        async send(body: NotifyMessage) {
+          sent.push(body);
+        },
+      },
+    };
+    return { notify, sent, envWithQueue };
+  }
+
+  it("POST node enqueues node.created", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify, sent, envWithQueue } = await seedNotify(bundle);
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(created.status, 201);
+    const { node } = (await created.json()) as { node: { id: string } };
+    assert.deepEqual(sent, [
+      {
+        kind: "node.created",
+        node_id: node.id,
+        workspace_id: "ws-farm",
+      },
+    ]);
+  });
+
+  it("PATCH title enqueues node.updated", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify, sent, envWithQueue } = await seedNotify(bundle);
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+    const patched = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Hen" }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(patched.status, 200);
+    assert.deepEqual(sent, [
+      {
+        kind: "node.updated",
+        node_id: node.id,
+        workspace_id: "ws-farm",
+      },
+    ]);
+  });
+
+  it("POST includes 201 enqueues node.included; 200 does not", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify, sent, envWithQueue } = await seedNotify(bundle);
+    const parent = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const child = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Req" },
+    );
+    const first = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(first.status, 201);
+    const second = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${parent.id}/includes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ child_id: child.id }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(second.status, 200);
+    assert.deepEqual(sent, [
+      {
+        kind: "node.included",
+        node_id: parent.id,
+        workspace_id: "ws-farm",
+      },
+    ]);
+  });
+
+  it("POST refs 201 enqueues node.cited; 200 does not", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify, sent, envWithQueue } = await seedNotify(bundle);
+    const from = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Plan" },
+    );
+    const to = await postNode(
+      cookie,
+      catalog,
+      wiki,
+      bundle,
+      sessions,
+      { title: "Other" },
+    );
+    const first = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${from.id}/refs`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ to_id: to.id }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(first.status, 201);
+    const second = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${from.id}/refs`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ to_id: to.id }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(second.status, 200);
+    assert.deepEqual(sent, [
+      {
+        kind: "node.cited",
+        node_id: from.id,
+        workspace_id: "ws-farm",
+      },
+    ]);
+  });
+
+  it("subscription kinds only node.cited does not enqueue create", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify, sent, envWithQueue } = await seedNotify(bundle, [
+      "node.cited",
+    ]);
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(created.status, 201);
+    assert.equal(sent.length, 0);
+  });
+
+  it("env without NOTIFY does not throw on POST node", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify } = await seedNotify(bundle);
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(created.status, 201);
+  });
+
+  it("POST work-items and projects attach do not enqueue", async () => {
+    const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+    const { notify, sent, envWithQueue } = await seedNotify(bundle);
+    catalog.seedWorkItem(farmWorkItem(bundle, "wi-1"));
+    const created = await handleWiki(
+      new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Egg" }),
+      }),
+      env,
+      sessions,
+      catalog,
+      wiki,
+    );
+    const { node } = (await created.json()) as { node: { id: string } };
+    const work = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/work-items`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ work_item_id: "wi-1" }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(work.status, 201);
+    const project = await handleWiki(
+      new Request(`${ORIGIN}/api/nodes/${node.id}/projects`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ project_id: bundle.project.id }),
+      }),
+      envWithQueue,
+      sessions,
+      catalog,
+      wiki,
+      notify,
+    );
+    assert.equal(project.status, 201);
+    assert.equal(sent.length, 0);
   });
 });
 

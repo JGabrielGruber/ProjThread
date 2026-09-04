@@ -37,6 +37,7 @@ export type ReportInput = {
   harvest: CaptureHarvest;
   refId?: string | null;
   screenshot?: { bytes: Uint8Array; mime: string; filename: string } | null;
+  files?: { bytes: Uint8Array; mime: string; filename: string }[] | null;
   now?: () => string;
 };
 
@@ -44,6 +45,7 @@ export type ReportResult = {
   rootId: string;
   metadataId: string;
   screenshotId: string | null;
+  fileIds: string[];
 };
 
 export function parseOrigin(raw: string): string | null {
@@ -144,6 +146,25 @@ export async function fileReport(
     screenshotId = shot.node.id;
     await api.includeNode(root.node.id, shot.node.id);
   }
+  const fileIds: string[] = [];
+  for (const file of input.files ?? []) {
+    if (!api.createBlobNode) throw new Error("blob");
+    const title = file.filename.trim()
+      ? rootTitle(file.filename)
+      : "Capture file";
+    const form = new FormData();
+    form.set("title", title);
+    form.set("type", "note");
+    form.set("payload_kind", "blob");
+    form.set(
+      "file",
+      new Blob([file.bytes], { type: file.mime }),
+      file.filename.trim() || "file",
+    );
+    const node = await api.createBlobNode(input.workspaceId, form);
+    fileIds.push(node.node.id);
+    await api.includeNode(root.node.id, node.node.id);
+  }
   await api.linkProject(root.node.id, input.projectId);
   const refId = input.refId?.trim();
   if (refId) await api.refNode(root.node.id, refId);
@@ -151,5 +172,6 @@ export async function fileReport(
     rootId: root.node.id,
     metadataId: metadata.node.id,
     screenshotId,
+    fileIds,
   };
 }

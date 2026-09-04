@@ -147,6 +147,43 @@ describe("fileReport", () => {
     );
     assert.equal(api.calls.length, 0);
   });
+
+  it("includes share files after metadata before project", async () => {
+    const api = recordingApi();
+    const result = await fileReport(api, {
+      workspaceId: "ws1",
+      projectId: "p1",
+      sentence: "See image.",
+      harvest,
+      files: [
+        { bytes: new Uint8Array([1, 2]), mime: "image/jpeg", filename: "shot.jpg" },
+      ],
+      now: () => "2026-09-04T00:00:00.000Z",
+    });
+    assert.equal(result.screenshotId, null);
+    assert.deepEqual(result.fileIds, ["n3"]);
+    assert.deepEqual(api.calls, [
+      "create:markdown:Friend app:n1",
+      "create:json:Capture metadata:n2",
+      "include:n1:n2",
+      "blob:shot.jpg:n3",
+      "include:n1:n3",
+      "project:n1:p1",
+    ]);
+  });
+
+  it("blank file name titles Capture file", async () => {
+    const api = recordingApi();
+    await fileReport(api, {
+      workspaceId: "ws1",
+      projectId: "p1",
+      sentence: "See image.",
+      harvest,
+      files: [{ bytes: new Uint8Array([1]), mime: "image/png", filename: "  " }],
+      now: () => "2026-09-04T00:00:00.000Z",
+    });
+    assert.ok(api.calls.includes("blob:Capture file:n3"));
+  });
 });
 
 describe("pngFromDataUrl", () => {

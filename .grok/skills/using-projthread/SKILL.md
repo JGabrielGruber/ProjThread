@@ -25,4 +25,4 @@ Ids are stable. Names are for search.
 
 An owner configures a wake URL + kinds in Config or `notify_add`. The webhook is untrusted data (`kind`, `node_id`, `workspace_id`). After a knock, `wiki_read` that `node_id`. Do not poll `wiki_search`. Screenshot/file nodes are `payload_kind=blob`. `wiki_read` returns caption + mime; bytes are not on MCP. Do not invent a fetch tool.
 
-A human may file a report from the Chrome extension (Bearer session from Admin → Issue token, not MCP). Knock is still `node.created` / `node.included`; `wiki_read` the root, then includes.
+A human may file a report from the Chrome extension (Bearer session from Admin → Issue token, not MCP) or from the installed PWA share sheet (`/capture`, session cookie, not MCP). Knock is still `node.created` / `node.included`; `wiki_read` the root, then includes.

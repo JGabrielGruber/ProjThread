@@ -146,7 +146,7 @@ Do not implement this spec in one run. Each row is its own plan in `docs/STATUS.
 | **20** | `node_project` write | `POST /api/nodes/:id/projects` `{ project_id }` (idempotent like work-item attach); GET node includes `project_ids`; MCP wrap; PWA may stay read-filter only. | none |
 | **21** | Notify | D1 subscriptions; Queue producer on the four kinds; consumer doorbell; Config (not admin dump) to add X on Y,Z. n=1. Plan: `docs/superpowers/plans/2026-09-04-projthread-notify.md`. | `NOTIFY` queue |
 | **22a** | R2 + blob HTTP | Multipart upload; `GET`/`PUT` bytes; MCP caption + mime, not pixels. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-http.md`. **Landed** (local bind). | R2 |
-| **22b** | Blob PWA | Wiki create file + preview-by-mime. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-pwa.md`. | none new |
+| **22b** | Blob PWA | Wiki create file + preview-by-mime. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-pwa.md`. **Landed.** | none new |
 | **23** | Capture extension | Proper client. Project select/create. Report graph. Pristine chrome. | none new |
 | **24** | PWA share target | Manifest `share_target`; text/url landing route; files after 22. Same graph and project picker. SW still skips `/api/*` and WS. | none new |
 

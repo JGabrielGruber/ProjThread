@@ -60,6 +60,7 @@ export type WikiStore = {
     projectId: string,
   ): Promise<"inserted" | "exists">;
   getNode(id: string): Promise<NodeRow | null>;
+  blobUsage(): Promise<{ count: number; bytes: number }>;
   insertNode(row: NodeRow): Promise<void>;
   updateNode(id: string, patch: NodePatch): Promise<boolean>;
   listNodeWorkItemIds(nodeId: string): Promise<string[]>;
@@ -163,6 +164,19 @@ ORDER BY updated_at DESC, id DESC`,
     },
     async getNode(id) {
       return db.prepare(`${NODE_SELECT} WHERE id = ?`).bind(id).first<NodeRow>();
+    },
+    async blobUsage() {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) AS count, COALESCE(SUM(byte_size), 0) AS bytes
+FROM node
+WHERE payload_kind = 'blob' AND blob_key IS NOT NULL`,
+        )
+        .first<{ count: number; bytes: number }>();
+      return {
+        count: Number(row?.count ?? 0),
+        bytes: Number(row?.bytes ?? 0),
+      };
     },
     async insertNode(row) {
       await db
@@ -397,6 +411,16 @@ export function memoryWikiStore(): WikiStore {
     async getNode(id) {
       const row = nodes.get(id);
       return row ? { ...row } : null;
+    },
+    async blobUsage() {
+      let count = 0;
+      let bytes = 0;
+      for (const row of nodes.values()) {
+        if (row.payload_kind !== "blob" || !row.blob_key) continue;
+        count += 1;
+        bytes += row.byte_size ?? 0;
+      }
+      return { count, bytes };
     },
     async insertNode(row) {
       nodes.set(row.id, { ...row });

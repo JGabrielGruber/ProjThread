@@ -1,4 +1,9 @@
-import { BLOB_MAX_BYTES, parseMime, sanitizeFilename } from "../lib/blob.ts";
+import {
+  BLOB_MAX_BYTES,
+  exceedsBlobQuota,
+  parseMime,
+  sanitizeFilename,
+} from "../lib/blob.ts";
 import { newId } from "../lib/id.ts";
 import { sessionIdFromRequest } from "../lib/session-id.ts";
 import { descendantIds } from "../lib/project-tree.ts";
@@ -111,7 +116,10 @@ export async function handleWiki(
       return getBlobBytes(node, blobs);
     }
     if (nodePath.tail === "blob" && request.method === "PUT") {
-      return putBlobBytes(request, env, wiki, node, notify, blobs);
+      return Response.json(
+        { error: "method_not_allowed" },
+        { status: 405, headers: { allow: "GET" } },
+      );
     }
     if (nodePath.tail === "work-items" && request.method === "POST") {
       return linkWorkItem(request, catalog, wiki, node);
@@ -293,6 +301,10 @@ async function createBlobNode(
       return Response.json({ error: "bad_request" }, { status: 400 });
     }
   }
+  const usage = await wiki.blobUsage();
+  if (exceedsBlobQuota(usage, bytes.byteLength)) {
+    return Response.json({ error: "quota" }, { status: 507 });
+  }
   await blobs.put(key, bytes, mime);
   const now = new Date().toISOString();
   const row: NodeRow = {
@@ -342,60 +354,6 @@ async function getBlobBytes(
   });
 }
 
-async function putBlobBytes(
-  request: Request,
-  env: Env,
-  wiki: WikiStore,
-  node: NodeRow,
-  notify: NotifyStore | null,
-  blobs: BlobStore | null,
-): Promise<Response> {
-  if (node.payload_kind !== "blob") {
-    return Response.json({ error: "bad_request" }, { status: 400 });
-  }
-  if (!blobs) {
-    return Response.json({ error: "unavailable" }, { status: 503 });
-  }
-  if (!node.blob_key) {
-    return Response.json({ error: "not_found" }, { status: 404 });
-  }
-  const lengthHeader = request.headers.get("content-length");
-  if (lengthHeader != null && lengthHeader !== "") {
-    const declared = Number.parseInt(lengthHeader, 10);
-    if (Number.isFinite(declared) && declared > BLOB_MAX_BYTES) {
-      return Response.json({ error: "too_large" }, { status: 413 });
-    }
-  }
-  const buf = await request.arrayBuffer();
-  if (buf.byteLength === 0) {
-    return Response.json({ error: "bad_request" }, { status: 400 });
-  }
-  if (buf.byteLength > BLOB_MAX_BYTES) {
-    return Response.json({ error: "too_large" }, { status: 413 });
-  }
-  const mime = parseMime(request.headers.get("content-type"));
-  if (!mime) {
-    return Response.json({ error: "bad_request" }, { status: 400 });
-  }
-  const filename = sanitizeFilename(
-    request.headers.get("x-filename") ?? node.filename ?? "blob",
-  );
-  const bytes = new Uint8Array(buf);
-  await blobs.put(node.blob_key, bytes, mime);
-  const updated_at = new Date().toISOString();
-  await wiki.updateNode(node.id, {
-    mime_type: mime,
-    byte_size: bytes.byteLength,
-    filename,
-    updated_at,
-  });
-  const updated = await wiki.getNode(node.id);
-  if (!updated) {
-    return Response.json({ error: "not_found" }, { status: 404 });
-  }
-  await enqueueIfMatch(env.NOTIFY, notify, "node.updated", updated);
-  return nodeResponse(wiki, updated, 200);
-}
 
 function formFields(form: FormData): Record<string, unknown> {
   const body: Record<string, unknown> = {};

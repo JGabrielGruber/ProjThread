@@ -1,4 +1,18 @@
 export const BLOB_MAX_BYTES = 8 * 1024 * 1024;
+export const BLOB_MAX_COUNT = 4096;
+export const BLOB_MAX_STORED_BYTES = 4 * 1024 * 1024 * 1024;
+
+export type BlobUsage = { count: number; bytes: number };
+
+export function exceedsBlobQuota(
+  usage: BlobUsage,
+  incomingBytes: number,
+): boolean {
+  return (
+    usage.count + 1 > BLOB_MAX_COUNT ||
+    usage.bytes + incomingBytes > BLOB_MAX_STORED_BYTES
+  );
+}
 
 export function parseMime(value: string | null | undefined): string | null {
   if (!value) return null;

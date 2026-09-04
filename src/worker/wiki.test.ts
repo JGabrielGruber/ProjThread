@@ -170,5 +170,36 @@ describe("wiki store", () => {
       false,
     );
   });
+
+  it("blobUsage counts keyed blobs only, account grain", async () => {
+    const wiki = memoryWikiStore();
+    await wiki.insertNode(farmNote());
+    await wiki.insertNode(
+      farmNote({
+        id: "b-null",
+        payload_kind: "blob",
+        blob_key: null,
+        byte_size: 99,
+      }),
+    );
+    await wiki.insertNode(
+      farmNote({
+        id: "b1",
+        workspace_id: "ws-other",
+        payload_kind: "blob",
+        blob_key: "ws-other/b1",
+        byte_size: 10,
+      }),
+    );
+    await wiki.insertNode(
+      farmNote({
+        id: "b2",
+        payload_kind: "blob",
+        blob_key: "ws-1/b2",
+        byte_size: 5,
+      }),
+    );
+    assert.deepEqual(await wiki.blobUsage(), { count: 2, bytes: 15 });
+  });
 });
 

@@ -13,7 +13,11 @@ import {
   type SessionRow,
   type SessionStore,
 } from "./session.ts";
-import { BLOB_MAX_BYTES } from "../lib/blob.ts";
+import {
+  BLOB_MAX_BYTES,
+  BLOB_MAX_COUNT,
+  BLOB_MAX_STORED_BYTES,
+} from "../lib/blob.ts";
 import { COOKIE_NAME } from "../lib/cookies.ts";
 import { memoryBlobStore } from "./blobs.ts";
 import { handleWiki } from "./wiki-http.ts";
@@ -2069,65 +2073,65 @@ describe("handleWiki", () => {
       assert.equal(got.status, 404);
     });
 
-    it("PUT blob replaces bytes and enqueues node.updated", async () => {
+    it("PUT blob is 405; bytes unchanged", async () => {
       const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
       const blobs = memoryBlobStore();
-      const { notify, sent, envWithQueue } = await seedNotify(bundle);
       const created = await handleWiki(
         new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
           method: "POST",
           headers: { cookie },
           body: blobForm(),
         }),
-        envWithQueue,
+        env,
         sessions,
         catalog,
         wiki,
-        notify,
+        null,
         blobs,
       );
       assert.equal(created.status, 201);
       const { node } = (await created.json()) as {
         node: { id: string; blob_key: string };
       };
-      sent.length = 0;
       const put = await handleWiki(
         new Request(`${ORIGIN}/api/nodes/${node.id}/blob`, {
           method: "PUT",
-          headers: {
-            cookie,
-            "content-type": "image/jpeg",
-            "x-filename": "yard.jpg",
-          },
+          headers: { cookie, "content-type": "image/jpeg" },
           body: new Uint8Array([9, 9]),
         }),
-        envWithQueue,
+        env,
         sessions,
         catalog,
         wiki,
-        notify,
+        null,
         blobs,
       );
-      assert.equal(put.status, 200);
-      const patched = (await put.json()) as {
-        node: { mime_type: string; byte_size: number; filename: string };
-      };
-      assert.equal(patched.node.mime_type, "image/jpeg");
-      assert.equal(patched.node.byte_size, 2);
-      assert.equal(patched.node.filename, "yard.jpg");
-      assert.deepEqual(await blobs.get(node.blob_key), new Uint8Array([9, 9]));
-      assert.deepEqual(sent, [
-        {
-          kind: "node.updated",
-          node_id: node.id,
-          workspace_id: "ws-farm",
-        },
-      ]);
+      assert.equal(put.status, 405);
+      const body = (await put.json()) as { error: string };
+      assert.equal(body.error, "method_not_allowed");
+      assert.deepEqual(await blobs.get(node.blob_key), new Uint8Array([1, 2, 3, 4]));
     });
 
-    it("PUT over cap is 413", async () => {
+    it("multipart over stored quota is 507 and does not put", async () => {
       const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
       const blobs = memoryBlobStore();
+      await wiki.insertNode({
+        id: "fat",
+        workspace_id: bundle.workspace.id,
+        organization_id: bundle.organization.id,
+        type: "note",
+        payload_kind: "blob",
+        title: "fat",
+        summary: null,
+        content: null,
+        blob_key: `${bundle.workspace.id}/fat`,
+        mime_type: "image/png",
+        byte_size: BLOB_MAX_STORED_BYTES,
+        filename: "fat.png",
+        created_at: "2026-01-02T00:00:00.000Z",
+        updated_at: "2026-01-02T00:00:00.000Z",
+        pinned: 0,
+      });
       const created = await handleWiki(
         new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
           method: "POST",
@@ -2141,16 +2145,40 @@ describe("handleWiki", () => {
         null,
         blobs,
       );
-      const { node } = (await created.json()) as { node: { id: string } };
-      const res = await handleWiki(
-        new Request(`${ORIGIN}/api/nodes/${node.id}/blob`, {
-          method: "PUT",
-          headers: {
-            cookie,
-            "content-type": "image/png",
-            "content-length": String(BLOB_MAX_BYTES + 1),
-          },
-          body: new Uint8Array([1]),
+      assert.equal(created.status, 507);
+      const body = (await created.json()) as { error: string };
+      assert.equal(body.error, "quota");
+      assert.equal((await wiki.listNodes(bundle.workspace.id)).length, 1);
+    });
+
+    it("multipart over file count is 507", async () => {
+      const { cookie, catalog, wiki, bundle, sessions } = await memberContext();
+      const blobs = memoryBlobStore();
+      const now = "2026-01-02T00:00:00.000Z";
+      for (let i = 0; i < BLOB_MAX_COUNT; i++) {
+        await wiki.insertNode({
+          id: `c${i}`,
+          workspace_id: bundle.workspace.id,
+          organization_id: bundle.organization.id,
+          type: "note",
+          payload_kind: "blob",
+          title: "c",
+          summary: null,
+          content: null,
+          blob_key: `${bundle.workspace.id}/c${i}`,
+          mime_type: "image/png",
+          byte_size: 1,
+          filename: "c.png",
+          created_at: now,
+          updated_at: now,
+          pinned: 0,
+        });
+      }
+      const created = await handleWiki(
+        new Request(`${ORIGIN}/api/workspaces/${bundle.workspace.id}/nodes`, {
+          method: "POST",
+          headers: { cookie },
+          body: blobForm(),
         }),
         env,
         sessions,
@@ -2159,7 +2187,7 @@ describe("handleWiki", () => {
         null,
         blobs,
       );
-      assert.equal(res.status, 413);
+      assert.equal(created.status, 507);
     });
 
     it("multipart blob enqueues node.created", async () => {

@@ -3,6 +3,7 @@ import type {
   ConfigMember,
   ConfigProject,
   ConfigStage,
+  ConfigSubscription,
 } from "../models/config.ts";
 import { apiJson } from "./http.ts";
 
@@ -123,5 +124,41 @@ export function patchStages(
   return apiJson(`/api/workspaces/${workspaceId}/stages`, {
     method: "PATCH",
     body: JSON.stringify({ stages }),
+  });
+}
+
+export function listNotifySubscriptions(
+  workspaceId: string,
+): Promise<{ subscriptions: ConfigSubscription[] }> {
+  return apiJson(`/api/workspaces/${workspaceId}/notify-subscriptions`);
+}
+
+export function addNotifySubscription(
+  workspaceId: string,
+  body: { url: string; kinds: string[]; enabled?: boolean },
+): Promise<{ subscription: ConfigSubscription; secret: string }> {
+  return apiJson(`/api/workspaces/${workspaceId}/notify-subscriptions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchNotifySubscription(
+  workspaceId: string,
+  id: string,
+  body: { kinds?: string[]; enabled?: boolean },
+): Promise<{ subscription: ConfigSubscription }> {
+  return apiJson(`/api/workspaces/${workspaceId}/notify-subscriptions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteNotifySubscription(
+  workspaceId: string,
+  id: string,
+): Promise<void> {
+  return apiJson(`/api/workspaces/${workspaceId}/notify-subscriptions/${id}`, {
+    method: "DELETE",
   });
 }

@@ -5,16 +5,21 @@ import type {
   ConfigProject,
   ConfigStage,
   ConfigStatus,
+  ConfigSubscription,
 } from "../models/config.ts";
 import {
   addMember as addMemberRequest,
+  addNotifySubscription,
   createOrganization,
   createProject as createProjectRequest,
   deleteMember as deleteMemberRequest,
+  deleteNotifySubscription,
   listMembers,
+  listNotifySubscriptions,
   listProjects,
   listStages,
   patchMember,
+  patchNotifySubscription,
   patchProject,
   patchStages,
 } from "../services/catalog.ts";
@@ -26,6 +31,7 @@ export type {
   ConfigProject,
   ConfigStage,
   ConfigStatus,
+  ConfigSubscription,
 } from "../models/config.ts";
 
 export const useConfigStore = defineStore("config", () => {
@@ -33,6 +39,8 @@ export const useConfigStore = defineStore("config", () => {
   const members = ref<ConfigMember[]>([]);
   const projects = ref<ConfigProject[]>([]);
   const stages = ref<ConfigStage[]>([]);
+  const subscriptions = ref<ConfigSubscription[]>([]);
+  const lastSecret = ref<string | null>(null);
   const status = ref<ConfigStatus>("ready");
   const error = ref<string | null>(null);
   const loading = ref(false);
@@ -53,14 +61,17 @@ export const useConfigStore = defineStore("config", () => {
     error.value = null;
     workspaceId.value = nextWorkspaceId;
     try {
-      const [membersBody, projectsBody, stagesBody] = await Promise.all([
-        listMembers(nextWorkspaceId),
-        listProjects(nextWorkspaceId),
-        listStages(nextWorkspaceId),
-      ]);
+      const [membersBody, projectsBody, stagesBody, notifyBody] =
+        await Promise.all([
+          listMembers(nextWorkspaceId),
+          listProjects(nextWorkspaceId),
+          listStages(nextWorkspaceId),
+          listNotifySubscriptions(nextWorkspaceId),
+        ]);
       members.value = membersBody.members;
       projects.value = projectsBody.projects;
       stages.value = stagesBody.stages;
+      subscriptions.value = notifyBody.subscriptions;
       status.value = "ready";
     } catch (err) {
       fail(err);
@@ -186,6 +197,56 @@ export const useConfigStore = defineStore("config", () => {
     }
   }
 
+  async function addSubscription(input: {
+    url: string;
+    kinds: string[];
+    enabled?: boolean;
+  }): Promise<void> {
+    const ws = workspaceId.value;
+    if (!ws) return;
+    try {
+      const body = await addNotifySubscription(ws, input);
+      subscriptions.value = [...subscriptions.value, body.subscription];
+      lastSecret.value = body.secret;
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  function clearLastSecret(): void {
+    lastSecret.value = null;
+  }
+
+  async function removeSubscription(id: string): Promise<void> {
+    const ws = workspaceId.value;
+    if (!ws) return;
+    try {
+      await deleteNotifySubscription(ws, id);
+      subscriptions.value = subscriptions.value.filter((s) => s.id !== id);
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function setSubscriptionEnabled(
+    id: string,
+    enabled: boolean,
+  ): Promise<void> {
+    const ws = workspaceId.value;
+    if (!ws) return;
+    try {
+      const body = await patchNotifySubscription(ws, id, { enabled });
+      subscriptions.value = subscriptions.value.map((s) =>
+        s.id === id ? { ...s, ...body.subscription } : s,
+      );
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
   async function saveStages(next: ConfigStage[]): Promise<void> {
     const ws = workspaceId.value;
     if (!ws) return;
@@ -203,6 +264,8 @@ export const useConfigStore = defineStore("config", () => {
     members,
     projects,
     stages,
+    subscriptions,
+    lastSecret,
     status,
     error,
     loading,
@@ -215,5 +278,9 @@ export const useConfigStore = defineStore("config", () => {
     removeMember,
     createWorkspace,
     saveStages,
+    addSubscription,
+    clearLastSecret,
+    removeSubscription,
+    setSubscriptionEnabled,
   };
 });

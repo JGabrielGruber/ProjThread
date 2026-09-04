@@ -10,6 +10,13 @@ import {
 } from "../stores/config.ts";
 import { useSessionStore } from "../stores/session.ts";
 
+const NOTIFY_KIND_OPTIONS = [
+  "node.created",
+  "node.updated",
+  "node.included",
+  "node.cited",
+] as const;
+
 const session = useSessionStore();
 const config = useConfigStore();
 
@@ -26,6 +33,11 @@ const renameName = ref("");
 
 const draftStages = ref<ConfigStage[]>([]);
 const workspaceName = ref("");
+
+const notifyOpen = ref(false);
+const notifyUrl = ref("");
+const notifyKinds = ref<string[]>([]);
+const secretOpen = ref(false);
 
 watch(
   () => session.workspaceId,
@@ -111,6 +123,33 @@ async function submitStages(): Promise<void> {
       position: Number(s.position),
     })),
   );
+}
+
+function toggleNotifyKind(kind: string, checked: boolean): void {
+  if (checked) {
+    if (!notifyKinds.value.includes(kind)) {
+      notifyKinds.value = [...notifyKinds.value, kind];
+    }
+    return;
+  }
+  notifyKinds.value = notifyKinds.value.filter((k) => k !== kind);
+}
+
+async function submitNotify(): Promise<void> {
+  if (config.status !== "ready") return;
+  const url = notifyUrl.value.trim();
+  if (!url || notifyKinds.value.length === 0) return;
+  await config.addSubscription({ url, kinds: [...notifyKinds.value] });
+  if (config.status === "error") return;
+  notifyUrl.value = "";
+  notifyKinds.value = [];
+  notifyOpen.value = false;
+  if (config.lastSecret) secretOpen.value = true;
+}
+
+function dismissSecret(): void {
+  config.clearLastSecret();
+  secretOpen.value = false;
 }
 </script>
 
@@ -280,6 +319,72 @@ async function submitStages(): Promise<void> {
       Save
     </PtButton>
     </section>
+
+    <section class="block">
+    <h3>Notify</h3>
+    <ul>
+      <PtListRow v-for="sub in config.subscriptions" :key="sub.id">
+        {{ sub.url }} · {{ sub.kinds.join(", ") }} · {{ sub.enabled ? "on" : "off" }}
+        <template #meta>
+          <PtButton
+            type="button"
+            :disabled="config.status !== 'ready'"
+            @click="config.setSubscriptionEnabled(sub.id, !sub.enabled)"
+          >
+            {{ sub.enabled ? "Off" : "On" }}
+          </PtButton>
+          <PtButton
+            type="button"
+            :disabled="config.status !== 'ready'"
+            @click="config.removeSubscription(sub.id)"
+          >
+            Remove
+          </PtButton>
+        </template>
+      </PtListRow>
+    </ul>
+    <PtButton
+      type="button"
+      variant="primary"
+      :disabled="config.status !== 'ready'"
+      @click="notifyOpen = true"
+    >
+      Add subscription
+    </PtButton>
+    <Modal
+      :open="notifyOpen"
+      title="Add subscription"
+      labelled-by="notify-title"
+      @close="notifyOpen = false"
+    >
+      <form class="form" @submit.prevent="submitNotify">
+        <PtField v-model="notifyUrl" type="url" label="Webhook URL" />
+        <label
+          v-for="kind in NOTIFY_KIND_OPTIONS"
+          :key="kind"
+          class="kind"
+        >
+          <input
+            type="checkbox"
+            :checked="notifyKinds.includes(kind)"
+            @change="toggleNotifyKind(kind, ($event.target as HTMLInputElement).checked)"
+          />
+          {{ kind }}
+        </label>
+        <PtButton type="submit" variant="primary" :disabled="config.status !== 'ready'">Add</PtButton>
+        <PtButton type="button" @click="notifyOpen = false">Cancel</PtButton>
+      </form>
+    </Modal>
+    <Modal
+      :open="secretOpen"
+      title="Signing secret"
+      labelled-by="secret-title"
+      @close="dismissSecret"
+    >
+      <p class="secret">{{ config.lastSecret }}</p>
+      <PtButton type="button" variant="primary" @click="dismissSecret">Dismiss</PtButton>
+    </Modal>
+    </section>
   </section>
 </template>
 
@@ -328,6 +433,19 @@ li {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.kind {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.secret {
+  margin: 0 0 0.75rem;
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
 }
 
 input,

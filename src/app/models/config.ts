@@ -17,4 +17,12 @@ export type ConfigStage = {
   position: number;
 };
 
+export type ConfigSubscription = {
+  id: string;
+  url: string;
+  kinds: string[];
+  enabled: boolean;
+  created_at: string;
+};
+
 export type ConfigStatus = "loading" | "ready" | "error" | "no_session";

@@ -14,7 +14,7 @@ describe("config store", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("load GETs members, projects, and stages with credentials", async () => {
+  it("load GETs members, projects, stages, and notify-subscriptions with credentials", async () => {
     const calls: { url: string; credentials: RequestCredentials | undefined }[] =
       [];
     globalThis.fetch = async (input, init) => {
@@ -26,14 +26,17 @@ describe("config store", () => {
       if (url.endsWith("/members")) return Response.json({ members: [] });
       if (url.endsWith("/projects")) return Response.json({ projects: [] });
       if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       throw new Error(`unexpected fetch ${url}`);
     };
     const store = useConfigStore();
     await store.load("ws1");
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     const urls = calls.map((c) => c.url).sort();
     assert.deepEqual(urls, [
       "/api/workspaces/ws1/members",
+      "/api/workspaces/ws1/notify-subscriptions",
       "/api/workspaces/ws1/projects",
       "/api/workspaces/ws1/stages",
     ]);
@@ -53,6 +56,8 @@ describe("config store", () => {
       if (url.endsWith("/members")) return Response.json({ members: [] });
       if (url.endsWith("/projects")) return Response.json({ projects: [] });
       if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       throw new Error(`unexpected fetch ${url}`);
     };
     const store = useConfigStore();
@@ -60,7 +65,7 @@ describe("config store", () => {
     const second = store.load("ws1");
     release();
     await Promise.all([first, second]);
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
   });
 
   it("401 => status no_session", async () => {
@@ -80,6 +85,8 @@ describe("config store", () => {
         if (url.endsWith("/members")) return Response.json({ members: [] });
         if (url.endsWith("/projects")) return Response.json({ projects: [] });
         if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       }
       if (url.endsWith("/members") && method === "POST") {
         posts.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
@@ -114,6 +121,8 @@ describe("config store", () => {
         if (url.endsWith("/members")) return Response.json({ members: [] });
         if (url.endsWith("/projects")) return Response.json({ projects: [] });
         if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       }
       if (url.endsWith("/projects") && method === "POST") {
         posts.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
@@ -153,6 +162,8 @@ describe("config store", () => {
           });
         }
         if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       }
       if (url === "/api/projects/root" && method === "PATCH") {
         patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
@@ -184,6 +195,8 @@ describe("config store", () => {
         if (url.endsWith("/members")) return Response.json({ members: [] });
         if (url.endsWith("/projects")) return Response.json({ projects: [] });
         if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       }
       if (url.endsWith("/stages") && method === "PATCH") {
         patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
@@ -214,6 +227,8 @@ describe("config store", () => {
         }
         if (url.endsWith("/projects")) return Response.json({ projects: [] });
         if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       }
       if (url === "/api/workspaces/ws1/members/p2" && method === "PATCH") {
         patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
@@ -251,6 +266,8 @@ describe("config store", () => {
         }
         if (url.endsWith("/projects")) return Response.json({ projects: [] });
         if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       }
       if (url === "/api/workspaces/ws1/members/p2" && method === "DELETE") {
         deletes.push(url);
@@ -314,11 +331,151 @@ describe("config store", () => {
       if (url.endsWith("/members")) return Response.json({ members: [] });
       if (url.endsWith("/projects")) return Response.json({ projects: [] });
       if (url.endsWith("/stages")) return Response.json({ stages: [] });
+      if (url.endsWith("/notify-subscriptions"))
+        return Response.json({ subscriptions: [] });
       throw new Error(`unexpected fetch ${method} ${url}`);
     };
     const store = useConfigStore();
     await store.createWorkspace("Keep");
     assert.equal(posts[0]?.url, "/api/organizations");
     assert.deepEqual(posts[0]?.body, { name: "Keep" });
+  });
+
+  it("addSubscription POSTs url+kinds and keeps lastSecret", async () => {
+    const posts: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") {
+        if (url.endsWith("/members")) return Response.json({ members: [] });
+        if (url.endsWith("/projects")) return Response.json({ projects: [] });
+        if (url.endsWith("/stages")) return Response.json({ stages: [] });
+        if (url.endsWith("/notify-subscriptions"))
+          return Response.json({ subscriptions: [] });
+      }
+      if (url.endsWith("/notify-subscriptions") && method === "POST") {
+        posts.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return Response.json(
+          {
+            subscription: {
+              id: "sub1",
+              url: "https://bot.example/hook",
+              kinds: ["node.created"],
+              enabled: true,
+              created_at: "2026-01-01T00:00:00.000Z",
+            },
+            secret: "whsec_dGVzdA==",
+          },
+          { status: 201 },
+        );
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useConfigStore();
+    await store.load("ws1");
+    await store.addSubscription({
+      url: "https://bot.example/hook",
+      kinds: ["node.created"],
+    });
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0]?.url, "/api/workspaces/ws1/notify-subscriptions");
+    assert.deepEqual(posts[0]?.body, {
+      url: "https://bot.example/hook",
+      kinds: ["node.created"],
+    });
+    assert.equal(store.lastSecret, "whsec_dGVzdA==");
+    store.clearLastSecret();
+    assert.equal(store.lastSecret, null);
+  });
+
+  it("removeSubscription DELETE id", async () => {
+    const deletes: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") {
+        if (url.endsWith("/members")) return Response.json({ members: [] });
+        if (url.endsWith("/projects")) return Response.json({ projects: [] });
+        if (url.endsWith("/stages")) return Response.json({ stages: [] });
+        if (url.endsWith("/notify-subscriptions")) {
+          return Response.json({
+            subscriptions: [
+              {
+                id: "sub1",
+                url: "https://bot.example/hook",
+                kinds: ["node.created"],
+                enabled: true,
+                created_at: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          });
+        }
+      }
+      if (
+        url === "/api/workspaces/ws1/notify-subscriptions/sub1" &&
+        method === "DELETE"
+      ) {
+        deletes.push(url);
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useConfigStore();
+    await store.load("ws1");
+    await store.removeSubscription("sub1");
+    assert.deepEqual(deletes, ["/api/workspaces/ws1/notify-subscriptions/sub1"]);
+    assert.equal(store.subscriptions.length, 0);
+  });
+
+  it("setSubscriptionEnabled PATCHes enabled", async () => {
+    const patches: { url: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") {
+        if (url.endsWith("/members")) return Response.json({ members: [] });
+        if (url.endsWith("/projects")) return Response.json({ projects: [] });
+        if (url.endsWith("/stages")) return Response.json({ stages: [] });
+        if (url.endsWith("/notify-subscriptions")) {
+          return Response.json({
+            subscriptions: [
+              {
+                id: "sub1",
+                url: "https://bot.example/hook",
+                kinds: ["node.created"],
+                enabled: true,
+                created_at: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          });
+        }
+      }
+      if (
+        url === "/api/workspaces/ws1/notify-subscriptions/sub1" &&
+        method === "PATCH"
+      ) {
+        patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return Response.json({
+          subscription: {
+            id: "sub1",
+            url: "https://bot.example/hook",
+            kinds: ["node.created"],
+            enabled: false,
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+        });
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useConfigStore();
+    await store.load("ws1");
+    await store.setSubscriptionEnabled("sub1", false);
+    assert.equal(patches.length, 1);
+    assert.equal(
+      patches[0]?.url,
+      "/api/workspaces/ws1/notify-subscriptions/sub1",
+    );
+    assert.deepEqual(patches[0]?.body, { enabled: false });
+    assert.equal(store.subscriptions[0]?.enabled, false);
   });
 });

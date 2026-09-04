@@ -6,7 +6,7 @@ Read this file first after compact. It is the project map, not the archive.
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie **or** `Authorization: Bearer <session.id>` on app `/api/*`, Bearer on `/mcp`, cookie on WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy pages. Grow to `pages/` `components/` `models/` `services/` and a real router (see spec **PWA product**). **PWA** (kanban + room + **wiki** + **config**) and **super-admin** = our primitives, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
-**Now:** open plan 21 (`docs/superpowers/plans/2026-09-04-projthread-notify.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start a slice that STATUS does not name. Do not start capture clients or R2. Queue bind is this slice only (`NOTIFY`).
+**Now:** no open slice. Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start a slice that STATUS does not name. Do not start capture clients or R2. Queues are bound (`NOTIFY` / `projthread-notify`); do not add a second queue.
 
 ## Pickup (coding agents, including Grok Build)
 
@@ -80,14 +80,14 @@ Workers Free. Daily caps reset 00:00 UTC.
 | Worker CPU | 10 ms / request | Thin upgrade + catalog. Room work runs on the DO (30s CPU), not the Worker. |
 | D1 | 10 DBs, 500 MB/DB, 5M reads/day, 100k writes/day | Catalog + work-item events. Not the chat log. |
 | Durable Objects | 100k requests/day (includes WS messages), 13k GB-s/day, 5 GB SQL | One DO per room. Hibernate idle sockets. Do not bill keystrokes as messages. |
+| Queues | 10k ops/day | n=1, only if a subscription matches. One queue (`NOTIFY`). |
 | Vectorize | Free-plan dimensions exist; do not bind yet | Full-text / structured filters first. |
-| Queues | not assumed | No notify pipeline in v1. |
 
 Do not add a binding until a feature earns it.
 
 ## Named absences
 
-MCP surface. Vectorize. R2 (including batched transcript checkpoint). Workers AI. Queues. KV. Google OAuth. Destination login / public signup. Chief of Staff bot. Agent load (paid plan). Agent digestion of rooms → nodes. **Channels**. **Child rooms** (`work_item.parent_id`). **Draggable non-modal windows**. WebRTC / voice. Subdomain-per-tenant. **Chores** (dotproj; do not port — that wound is why Palm exists). Palm integration.
+MCP surface. Vectorize. R2 (including batched transcript checkpoint). Workers AI. KV. Google OAuth. Destination login / public signup. Chief of Staff bot. Agent load (paid plan). Agent digestion of rooms → nodes. **Channels**. **Child rooms** (`work_item.parent_id`). **Draggable non-modal windows**. WebRTC / voice. Subdomain-per-tenant. **Chores** (dotproj; do not port — that wound is why Palm exists). Palm integration.
 
 ## Ancestors
 

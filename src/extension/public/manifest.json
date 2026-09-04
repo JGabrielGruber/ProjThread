@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ProjThread Capture",
+  "version": "0.23.0",
+  "description": "File a wiki report from the page you are on.",
+  "action": {
+    "default_title": "ProjThread",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "192": "icons/icon-192.png"
+    }
+  },
+  "icons": {
+    "192": "icons/icon-192.png",
+    "512": "icons/icon-512.png"
+  },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"]
+}

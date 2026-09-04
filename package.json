@@ -11,6 +11,7 @@
     "dev:admin": "vite --config src/admin/vite.config.ts",
     "build:app": "vite build --config src/app/vite.config.ts",
     "build:admin": "vite build --config src/admin/vite.config.ts",
+    "build:extension": "vite build --config src/extension/vite.config.ts",
     "build": "npm run build:app && npm run build:admin",
     "deploy": "npm run build && wrangler deploy",
     "test": "node --test --experimental-strip-types src/lib/*.test.ts src/worker/*.test.ts src/room/*.test.ts src/app/stores/*.test.ts src/app/*.test.ts src/app/services/*.test.ts",

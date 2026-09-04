@@ -26,7 +26,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **17. Empty tenant** | `2026-09-02-projthread-empty-tenant.md` | First-workspace PWA; retire Farm seed. Remote D1 drop is ops |
 | **18. Config MCP** | `2026-09-02-projthread-config-mcp.md` | Bot members/projects/stages/`workspace_create`; wrap catalog HTTP; no principal mint |
 
-**Now:** open **23** capture extension. Capture spec approved (`2026-09-03-projthread-capture-design.md`). Park plan 8. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start **24**. Do not add CORS. Do not run `wrangler r2 bucket create` unless José asks. Do not add a second queue.
+**Now:** no open slice. Capture spec approved (`2026-09-03-projthread-capture-design.md`). Park plan 8. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start **24**. Do not add CORS. Do not run `wrangler r2 bucket create` unless José asks. Do not add a second queue.
 
 | Plan | File | Ships |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ v1 is one product, several **independent plans**. Each plan ships working, testa
 | **21. Notify** | `2026-09-04-projthread-notify.md` | Queue doorbell; subscription X on kinds Y,Z; n=1; Config. **Landed** (local; remote after `0009` + `wrangler queues create` + deploy). |
 | **22a. R2 + blob HTTP** | `2026-09-04-projthread-blob-http.md` | Multipart upload; GET/PUT bytes; MCP caption+mime. **Landed** (local bind; remote after `wrangler r2 bucket create projthread-blobs` + deploy). |
 | **22b. Blob PWA** | `2026-09-04-projthread-blob-pwa.md` | Wiki create file + preview-by-mime. **Landed.** |
-| **23. Capture extension** | `2026-09-04-projthread-capture-extension.md` | MV3 popup; Bearer; project select/create; report graph; optional PNG. **Open.** |
+| **23. Capture extension** | `2026-09-04-projthread-capture-extension.md` | MV3 popup; Bearer; project select/create; report graph; optional PNG. **Landed.** |
 | 24. PWA share target | *(not written)* | OS share: text/url; media after R2 |
 
 **Later (named, no plan file yet):**

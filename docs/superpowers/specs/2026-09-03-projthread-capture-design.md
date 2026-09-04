@@ -147,7 +147,7 @@ Do not implement this spec in one run. Each row is its own plan in `docs/STATUS.
 | **21** | Notify | D1 subscriptions; Queue producer on the four kinds; consumer doorbell; Config (not admin dump) to add X on Y,Z. n=1. Plan: `docs/superpowers/plans/2026-09-04-projthread-notify.md`. | `NOTIFY` queue |
 | **22a** | R2 + blob HTTP | Multipart upload; `GET`/`PUT` bytes; MCP caption + mime, not pixels. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-http.md`. **Landed** (local bind). | R2 |
 | **22b** | Blob PWA | Wiki create file + preview-by-mime. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-pwa.md`. **Landed.** | none new |
-| **23** | Capture extension | Proper client. Project select/create. Report graph. Pristine chrome. Plan: `docs/superpowers/plans/2026-09-04-projthread-capture-extension.md`. **Open.** | none new |
+| **23** | Capture extension | Proper client. Project select/create. Report graph. Screenshot without scribble. Plan: `docs/superpowers/plans/2026-09-04-projthread-capture-extension.md`. **Landed.** | none new |
 | **24** | PWA share target | Manifest `share_target`; text/url landing route; files after 22. Same graph and project picker. SW still skips `/api/*` and WS. | none new |
 
 **19** is the first implementation plan: `docs/superpowers/plans/2026-09-03-projthread-payload-json.md`. **20:** `docs/superpowers/plans/2026-09-03-projthread-node-project.md`. **21:** `docs/superpowers/plans/2026-09-04-projthread-notify.md`. **22a:** `docs/superpowers/plans/2026-09-04-projthread-blob-http.md`. **22b:** `docs/superpowers/plans/2026-09-04-projthread-blob-pwa.md`. **23:** `docs/superpowers/plans/2026-09-04-projthread-capture-extension.md`.

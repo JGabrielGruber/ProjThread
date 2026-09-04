@@ -8,6 +8,7 @@ import type {
 } from "../models/wiki.ts";
 import { ApiError } from "../services/http.ts";
 import {
+  createBlobNode as createBlobNodeRequest,
   createNode as createNodeRequest,
   getNode,
   includeNode as includeNodeRequest,
@@ -99,6 +100,22 @@ export const useWikiStore = defineStore("wiki", () => {
     if (!ws) return;
     try {
       const body = await createNodeRequest(ws, input);
+      node.value = body.node;
+      workItemIds.value = body.work_item_ids;
+      includes.value = body.includes ?? [];
+      refs.value = body.refs ?? [];
+      nodes.value = [toListRow(body.node), ...nodes.value];
+      status.value = "ready";
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function createBlobNode(form: FormData): Promise<void> {
+    const ws = workspaceId.value;
+    if (!ws) return;
+    try {
+      const body = await createBlobNodeRequest(ws, form);
       node.value = body.node;
       workItemIds.value = body.work_item_ids;
       includes.value = body.includes ?? [];
@@ -208,6 +225,7 @@ export const useWikiStore = defineStore("wiki", () => {
     loadList,
     openNode,
     createNode,
+    createBlobNode,
     saveNode,
     linkWorkItem,
     includeChild,

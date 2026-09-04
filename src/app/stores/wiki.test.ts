@@ -323,4 +323,62 @@ describe("wiki store", () => {
     assert.deepEqual(store.includes, [{ id: "n2", title: "Part", position: 0 }]);
     assert.deepEqual(store.refs, [{ id: "n3", title: "Cite" }]);
   });
+
+  it("createBlobNode POSTs FormData without json content-type", async () => {
+    const posts: { url: string; contentType: string | null; isForm: boolean }[] =
+      [];
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/workspaces/ws1/nodes" && method === "GET") {
+        return Response.json({ nodes: [] });
+      }
+      if (url === "/api/workspaces/ws1/nodes" && method === "POST") {
+        const headers = new Headers(init?.headers);
+        posts.push({
+          url,
+          contentType: headers.get("content-type"),
+          isForm: init?.body instanceof FormData,
+        });
+        return Response.json(
+          {
+            node: {
+              id: "n-blob",
+              workspace_id: "ws1",
+              organization_id: "o1",
+              type: "note",
+              payload_kind: "blob",
+              title: "Shot",
+              summary: null,
+              content: "Yard",
+              mime_type: "image/png",
+              byte_size: 4,
+              filename: "shot.png",
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              pinned: 0,
+            },
+            work_item_ids: [],
+          },
+          { status: 201 },
+        );
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const store = useWikiStore();
+    await store.loadList("ws1");
+    const form = new FormData();
+    form.set("title", "Shot");
+    form.set("payload_kind", "blob");
+    form.set("content", "Yard");
+    form.set("file", new File([new Uint8Array([1, 2, 3, 4])], "shot.png", {
+      type: "image/png",
+    }));
+    await store.createBlobNode(form);
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0]?.isForm, true);
+    assert.equal(posts[0]?.contentType, null);
+    assert.equal(store.node?.payload_kind, "blob");
+    assert.equal(store.node?.filename, "shot.png");
+  });
 });

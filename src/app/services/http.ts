@@ -11,7 +11,11 @@ export async function apiJson<T>(
   init: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body != null && !headers.has("content-type")) {
+  if (
+    init.body != null &&
+    !headers.has("content-type") &&
+    !(typeof FormData !== "undefined" && init.body instanceof FormData)
+  ) {
     headers.set("content-type", "application/json");
   }
   const res = await fetch(path, {

@@ -28,6 +28,16 @@ export function getNode(id: string): Promise<NodePayload> {
   return apiJson(`/api/nodes/${id}`);
 }
 
+export function createBlobNode(
+  workspaceId: string,
+  form: FormData,
+): Promise<NodePayload> {
+  return apiJson(`/api/workspaces/${workspaceId}/nodes`, {
+    method: "POST",
+    body: form,
+  });
+}
+
 export function createNode(
   workspaceId: string,
   input: WikiCreate,

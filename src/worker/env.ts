@@ -38,12 +38,26 @@ export type NotifyQueueBinding = {
   }): Promise<void>;
 };
 
+export type R2ObjectBody = {
+  arrayBuffer(): Promise<ArrayBuffer>;
+};
+
+export type R2Bucket = {
+  put(
+    key: string,
+    value: ArrayBuffer | ArrayBufferView,
+    options?: { httpMetadata?: { contentType?: string } },
+  ): Promise<unknown>;
+  get(key: string): Promise<R2ObjectBody | null>;
+};
+
 export type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
   APP_ORIGIN: string;
   Room: RoomNamespace;
   NOTIFY?: NotifyQueueBinding;
+  BLOBS?: R2Bucket;
   ADMIN_DEV_SECRET?: string;
   POLICY_AUD?: string;
   TEAM_DOMAIN?: string;

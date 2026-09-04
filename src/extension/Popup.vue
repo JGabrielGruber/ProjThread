@@ -9,7 +9,13 @@ import {
   type CaptureClient,
   type MeBody,
 } from "../lib/capture-http.ts";
-import { parseOrigin } from "../lib/capture.ts";
+import {
+  fileReport,
+  parseOrigin,
+  pngFromDataUrl,
+  rootTitle,
+  type CaptureHarvest,
+} from "../lib/capture.ts";
 
 type ProjectRow = { id: string; parent_id: string | null; name: string };
 
@@ -94,6 +100,7 @@ async function boot(): Promise<void> {
     await afterMe(api, body);
     screen.value = "ready";
     setStatus("");
+    await prefillFromTab();
   } catch (err) {
     if (err instanceof CaptureHttpError && err.status === 401) {
       screen.value = "sign-in";
@@ -133,6 +140,7 @@ async function saveSession(): Promise<void> {
     await afterMe(api, body);
     screen.value = "ready";
     setStatus("");
+    await prefillFromTab();
   } catch (err) {
     fail(err, "Could not sign in");
   }
@@ -178,7 +186,101 @@ async function createProject(): Promise<void> {
   }
 }
 
-async function fileReportUi(): Promise<void> {}
+type HarvestDom = {
+  url: string;
+  page_title: string;
+  selection: string;
+  viewport: { width: number; height: number };
+};
+
+async function harvestTab(): Promise<{
+  harvest: CaptureHarvest;
+  windowId?: number;
+}> {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  let url = tab?.url ?? "";
+  let page_title = tab?.title ?? "";
+  let selection: string | null = null;
+  let viewport: { width: number; height: number } | null = null;
+  if (tab?.id != null) {
+    try {
+      const [inj] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (): HarvestDom => ({
+          url: location.href,
+          page_title: document.title,
+          selection: window.getSelection()?.toString() ?? "",
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+        }),
+      });
+      const result = inj?.result;
+      if (result) {
+        url = result.url;
+        page_title = result.page_title;
+        selection = result.selection;
+        viewport = result.viewport;
+      }
+    } catch {
+      /* chrome:// and the like */
+    }
+  }
+  return {
+    harvest: { url, page_title, selection, viewport },
+    windowId: tab?.windowId,
+  };
+}
+
+async function prefillFromTab(): Promise<void> {
+  try {
+    const { harvest } = await harvestTab();
+    const sel = harvest.selection?.trim() ?? "";
+    if (!sentence.value.trim() && sel) sentence.value = sel;
+  } catch {
+    /* ignore */
+  }
+}
+
+async function fileReportUi(): Promise<void> {
+  const api = client.value;
+  const projectId = attachProjectId.value;
+  if (!api || !workspaceId.value || !projectId || !canFile.value || filing.value) {
+    return;
+  }
+  filing.value = true;
+  setStatus("");
+  try {
+    const { harvest, windowId } = await harvestTab();
+    let shot: { bytes: Uint8Array; mime: string; filename: string } | null = null;
+    let note = "";
+    if (wantShot.value) {
+      try {
+        const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+          format: "png",
+        });
+        shot = pngFromDataUrl(dataUrl);
+        if (!shot) note = "No screenshot";
+      } catch {
+        note = "No screenshot";
+      }
+    }
+    await fileReport(api, {
+      workspaceId: workspaceId.value,
+      projectId,
+      sentence: sentence.value,
+      type: nodeType.value,
+      harvest,
+      refId: refId.value.trim() || null,
+      screenshot: shot,
+    });
+    const filedTitle = rootTitle(harvest.page_title);
+    setStatus(note ? `Filed ${filedTitle}. ${note}` : `Filed ${filedTitle}`);
+  } catch (err) {
+    fail(err);
+  } finally {
+    filing.value = false;
+  }
+}
 
 onMounted(() => {
   void boot();

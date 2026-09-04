@@ -40,6 +40,10 @@ export type NodePatch = {
   title?: string;
   summary?: string | null;
   content?: string | null;
+  blob_key?: string | null;
+  mime_type?: string | null;
+  byte_size?: number | null;
+  filename?: string | null;
   pinned?: number;
   updated_at: string;
 };
@@ -105,6 +109,10 @@ function applyPatch(row: NodeRow, patch: NodePatch): NodeRow {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.summary !== undefined ? { summary: patch.summary } : {}),
     ...(patch.content !== undefined ? { content: patch.content } : {}),
+    ...(patch.blob_key !== undefined ? { blob_key: patch.blob_key } : {}),
+    ...(patch.mime_type !== undefined ? { mime_type: patch.mime_type } : {}),
+    ...(patch.byte_size !== undefined ? { byte_size: patch.byte_size } : {}),
+    ...(patch.filename !== undefined ? { filename: patch.filename } : {}),
     ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
     updated_at: patch.updated_at,
   };
@@ -199,6 +207,22 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       if (patch.content !== undefined) {
         sets.push("content = ?");
         values.push(patch.content);
+      }
+      if (patch.blob_key !== undefined) {
+        sets.push("blob_key = ?");
+        values.push(patch.blob_key);
+      }
+      if (patch.mime_type !== undefined) {
+        sets.push("mime_type = ?");
+        values.push(patch.mime_type);
+      }
+      if (patch.byte_size !== undefined) {
+        sets.push("byte_size = ?");
+        values.push(patch.byte_size);
+      }
+      if (patch.filename !== undefined) {
+        sets.push("filename = ?");
+        values.push(patch.filename);
       }
       if (patch.pinned !== undefined) {
         sets.push("pinned = ?");

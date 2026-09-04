@@ -1,3 +1,4 @@
+import { BLOB_MAX_BYTES, parseMime, sanitizeFilename } from "../lib/blob.ts";
 import { newId } from "../lib/id.ts";
 import { sessionIdFromRequest } from "../lib/session-id.ts";
 import { descendantIds } from "../lib/project-tree.ts";
@@ -9,6 +10,7 @@ import {
   rejectTitle,
   stripRawHtml,
 } from "../lib/wiki-text.ts";
+import type { BlobStore } from "./blobs.ts";
 import type { CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import { enqueueIfMatch, type NotifyStore } from "./notify.ts";
@@ -29,6 +31,7 @@ export async function handleWiki(
   catalog: CatalogStore,
   wiki: WikiStore,
   notify: NotifyStore | null = null,
+  blobs: BlobStore | null = null,
 ): Promise<Response> {
   const sessionId = sessionIdFromRequest(request);
   if (!sessionId) {
@@ -79,6 +82,7 @@ export async function handleWiki(
         catalog,
         wiki,
         notify,
+        blobs,
       );
     }
     return Response.json({ error: "not_found" }, { status: 404 });
@@ -102,6 +106,12 @@ export async function handleWiki(
     }
     if (!nodePath.tail && request.method === "PATCH") {
       return patchNode(request, env, wiki, node, notify);
+    }
+    if (nodePath.tail === "blob" && request.method === "GET") {
+      return getBlobBytes(node, blobs);
+    }
+    if (nodePath.tail === "blob" && request.method === "PUT") {
+      return putBlobBytes(request, env, wiki, node, notify, blobs);
     }
     if (nodePath.tail === "work-items" && request.method === "POST") {
       return linkWorkItem(request, catalog, wiki, node);
@@ -129,7 +139,20 @@ async function createNode(
   catalog: CatalogStore,
   wiki: WikiStore,
   notify: NotifyStore | null,
+  blobs: BlobStore | null,
 ): Promise<Response> {
+  if ((request.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    return createBlobNode(
+      request,
+      env,
+      workspaceId,
+      organizationId,
+      catalog,
+      wiki,
+      notify,
+      blobs,
+    );
+  }
   const body = await readJson(request);
   if (!isRecord(body)) {
     return Response.json({ error: "bad_request" }, { status: 400 });
@@ -203,6 +226,184 @@ async function createNode(
   }
   await enqueueIfMatch(env.NOTIFY, notify, "node.created", row);
   return nodeResponse(wiki, row, 201);
+}
+
+async function createBlobNode(
+  request: Request,
+  env: Env,
+  workspaceId: string,
+  organizationId: string,
+  catalog: CatalogStore,
+  wiki: WikiStore,
+  notify: NotifyStore | null,
+  blobs: BlobStore | null,
+): Promise<Response> {
+  if (!blobs) {
+    return Response.json({ error: "unavailable" }, { status: 503 });
+  }
+  const form = await request.formData();
+  if (form.get("payload_kind") !== "blob") {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const body = formFields(form);
+  const type = parseType(body.type, true);
+  if (type === null) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (typeof body.title !== "string") {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const title = stripRawHtml(body.title).trim();
+  if (rejectTitle(title)) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const summary = parseOptionalText(body, "summary");
+  if (summary === false || rejectSummary(summary)) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const content = parseOptionalText(body, "content");
+  if (content === false || rejectContent(content)) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const file = form.get("file");
+  if (!(file instanceof Blob) || file.size === 0) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const mime = parseMime(file.type);
+  if (!mime) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (file.size > BLOB_MAX_BYTES) {
+    return Response.json({ error: "too_large" }, { status: 413 });
+  }
+  const id = newId();
+  const key = `${workspaceId}/${id}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength > BLOB_MAX_BYTES) {
+    return Response.json({ error: "too_large" }, { status: 413 });
+  }
+  const filename = sanitizeFilename(file instanceof File ? file.name : "blob");
+  const workItemId = parseOptionalId(body, "work_item_id");
+  if (workItemId === false) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (workItemId) {
+    const item = await catalog.getWorkItem(workItemId);
+    if (!item || item.workspace_id !== workspaceId) {
+      return Response.json({ error: "bad_request" }, { status: 400 });
+    }
+  }
+  await blobs.put(key, bytes, mime);
+  const now = new Date().toISOString();
+  const row: NodeRow = {
+    id,
+    workspace_id: workspaceId,
+    organization_id: organizationId,
+    type,
+    payload_kind: "blob",
+    title,
+    summary,
+    content,
+    blob_key: key,
+    mime_type: mime,
+    byte_size: bytes.byteLength,
+    filename,
+    created_at: now,
+    updated_at: now,
+    pinned: 0,
+  };
+  await wiki.insertNode(row);
+  if (workItemId) {
+    await wiki.linkNodeWorkItem(row.id, workItemId);
+  }
+  await enqueueIfMatch(env.NOTIFY, notify, "node.created", row);
+  return nodeResponse(wiki, row, 201);
+}
+
+async function getBlobBytes(
+  node: NodeRow,
+  blobs: BlobStore | null,
+): Promise<Response> {
+  if (node.payload_kind !== "blob" || !node.blob_key || !blobs) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+  const bytes = await blobs.get(node.blob_key);
+  if (!bytes) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+  const filename = sanitizeFilename(node.filename);
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "content-type": node.mime_type ?? "application/octet-stream",
+      "content-disposition": `inline; filename="${filename}"`,
+      "cache-control": "private, max-age=300",
+    },
+  });
+}
+
+async function putBlobBytes(
+  request: Request,
+  env: Env,
+  wiki: WikiStore,
+  node: NodeRow,
+  notify: NotifyStore | null,
+  blobs: BlobStore | null,
+): Promise<Response> {
+  if (node.payload_kind !== "blob") {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (!blobs) {
+    return Response.json({ error: "unavailable" }, { status: 503 });
+  }
+  if (!node.blob_key) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+  const lengthHeader = request.headers.get("content-length");
+  if (lengthHeader != null && lengthHeader !== "") {
+    const declared = Number.parseInt(lengthHeader, 10);
+    if (Number.isFinite(declared) && declared > BLOB_MAX_BYTES) {
+      return Response.json({ error: "too_large" }, { status: 413 });
+    }
+  }
+  const buf = await request.arrayBuffer();
+  if (buf.byteLength === 0) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (buf.byteLength > BLOB_MAX_BYTES) {
+    return Response.json({ error: "too_large" }, { status: 413 });
+  }
+  const mime = parseMime(request.headers.get("content-type"));
+  if (!mime) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const filename = sanitizeFilename(
+    request.headers.get("x-filename") ?? node.filename ?? "blob",
+  );
+  const bytes = new Uint8Array(buf);
+  await blobs.put(node.blob_key, bytes, mime);
+  const updated_at = new Date().toISOString();
+  await wiki.updateNode(node.id, {
+    mime_type: mime,
+    byte_size: bytes.byteLength,
+    filename,
+    updated_at,
+  });
+  const updated = await wiki.getNode(node.id);
+  if (!updated) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+  await enqueueIfMatch(env.NOTIFY, notify, "node.updated", updated);
+  return nodeResponse(wiki, updated, 200);
+}
+
+function formFields(form: FormData): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of form.entries()) {
+    if (key === "file") continue;
+    if (typeof value === "string") body[key] = value;
+  }
+  return body;
 }
 
 async function patchNode(
@@ -542,7 +743,10 @@ function matchWorkspaceNodes(pathname: string): string | null {
 
 function matchNodePath(
   pathname: string,
-): { id: string; tail: "work-items" | "includes" | "refs" | "projects" | null } | null {
+): {
+  id: string;
+  tail: "work-items" | "includes" | "refs" | "projects" | "blob" | null;
+} | null {
   const prefix = "/api/nodes/";
   if (!pathname.startsWith(prefix)) return null;
   const rest = pathname.slice(prefix.length);
@@ -557,7 +761,8 @@ function matchNodePath(
     (tail !== "work-items" &&
       tail !== "includes" &&
       tail !== "refs" &&
-      tail !== "projects")
+      tail !== "projects" &&
+      tail !== "blob")
   ) {
     return null;
   }

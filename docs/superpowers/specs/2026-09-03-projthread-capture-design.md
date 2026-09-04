@@ -145,7 +145,7 @@ Do not implement this spec in one run. Each row is its own plan in `docs/STATUS.
 | **19** | `payload_kind=json` | Migration CHECK `markdown\|json\|blob`; POST/PATCH json; PWA JSON reader + source edit; MCP `payload_kind`. Blob still 400. | none |
 | **20** | `node_project` write | `POST /api/nodes/:id/projects` `{ project_id }` (idempotent like work-item attach); GET node includes `project_ids`; MCP wrap; PWA may stay read-filter only. | none |
 | **21** | Notify | D1 subscriptions; Queue producer on the four kinds; consumer doorbell; Config (not admin dump) to add X on Y,Z. n=1. Plan: `docs/superpowers/plans/2026-09-04-projthread-notify.md`. | `NOTIFY` queue |
-| **22a** | R2 + blob HTTP | Multipart upload; `GET`/`PUT` bytes; MCP caption + mime, not pixels. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-http.md`. | R2 |
+| **22a** | R2 + blob HTTP | Multipart upload; `GET`/`PUT` bytes; MCP caption + mime, not pixels. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-http.md`. **Landed** (local bind). | R2 |
 | **22b** | Blob PWA | Wiki create file + preview-by-mime. Plan: `docs/superpowers/plans/2026-09-04-projthread-blob-pwa.md`. | none new |
 | **23** | Capture extension | Proper client. Project select/create. Report graph. Pristine chrome. | none new |
 | **24** | PWA share target | Manifest `share_target`; text/url landing route; files after 22. Same graph and project picker. SW still skips `/api/*` and WS. | none new |
@@ -162,7 +162,7 @@ Capture without 19 is a workaround. Capture without 20 cannot point a project wi
 | Worker 100k req/day | No poll. Static PWA. Extension uses `/api/*` like the PWA. |
 | Queue 10k ops/day | n=1, only if a subscription matches. Do not notify every keystroke; wiki writes are already discrete. |
 | D1 | JSON in `content`, 32 KiB cap. Not HAR archives. |
-| R2 | Unbound until slice 22. |
+| R2 | Bound `BLOBS` / `projthread-blobs` (local). One object per blob node. Remote bucket create is ops. |
 | Workers AI / Vectorize / KV | Unbound. Distill on the client if at all. |
 
 ## Still out

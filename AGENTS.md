@@ -6,7 +6,7 @@ Read this file first after compact. It is the project map, not the archive.
 **Shape (intended):** **one Worker, one origin.** v1: public PWA at `/` (static), Access only on `/admin*`, session cookie **or** `Authorization: Bearer <session.id>` on app `/api/*`, Bearer on `/mcp`, cookie on WS. Future: marketing + login at `/`, gated PWA (still same origin). **Room** Durable Object is the hot path. D1 is the catalog.
 
 **Client runtime:** Vue 3 + stores. Discipline: single-flight, skeleton-if-empty, status feedback, lazy pages. Grow to `pages/` `components/` `models/` `services/` and a real router (see spec **PWA product**). **PWA** (kanban + room + **wiki** + **config**) and **super-admin** = our primitives, tokenized Grok/X-sharp skin (no hardcoded colors). List + dialog, not DataGrid. Daisy is not the kit. Nord rejected. PrimeVue is out (v5 is not OSS).
-**Now:** open **22a** blob HTTP (`docs/superpowers/plans/2026-09-04-projthread-blob-http.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start a slice that STATUS does not name. Do not implement 22b until 22a lands. Do not start capture clients. Do not run `wrangler r2 bucket create` unless José asks. Queues are bound (`NOTIFY` / `projthread-notify`); do not add a second queue.
+**Now:** open **22b** blob PWA (`docs/superpowers/plans/2026-09-04-projthread-blob-pwa.md`). Deploy is parked — no custom domain yet. PrimeVue stays out. Do not write or implement Deploy. Do not start OAuth. Do not start room MCP. Do not mint principals. Do not add a PWA people picker. Do not drop remote D1 unless José asks. Do not start a slice that STATUS does not name. Do not start 23–24 unless STATUS names them. Do not start capture clients. Do not run `wrangler r2 bucket create` unless José asks. Queues are bound (`NOTIFY` / `projthread-notify`); do not add a second queue. R2 is bound locally (`BLOBS` / `projthread-blobs`).
 
 ## Pickup (coding agents, including Grok Build)
 
@@ -65,10 +65,10 @@ Spec is approved. Implement **only** the open plan in `docs/STATUS.md`. If there
 - Durable Object is a **coordination atom** (hibernatable WebSockets, serial fan-in, **live message log**). Keyed by `work_item.id`. Replaceable. Do not put authoritative status only in DO SQLite.
 - Status / Activity writes: persist to D1 first (snapshot + `work_item_event`), then append a **system frame** on the room DO so the event sits on the tape at room seq.
 - **Activity** is work-item-local (`decision`, `occurrence`, `note`, card moves). Rendered **in the chat timeline** at that seq. Activity-only filter = preview of the chat archive. Not a second wiki.
-- **Nodes** are workspace-graph vertices. Semantic `type` ≠ `payload_kind` (`markdown` \| `json` \| `blob`). v1 writes markdown **or** json; blob columns reserved, R2 unbound. Markdown read view is phone-calm. M2M links to projects and work items. Not the chat archive.
+- **Nodes** are workspace-graph vertices. Semantic `type` ≠ `payload_kind` (`markdown` \| `json` \| `blob`). v1 writes markdown, json, **or blob**. Markdown read view is phone-calm. M2M links to projects and work items. Not the chat archive.
 - Principals include humans **and** agents. Schema must not assume “user = Google account”. Agents are a **paid-plan load class**, not a v1 feature.
 - **Auth (v1 workaround):** Cloudflare Access on `/admin` and `/api/admin/*`. Admin **vends** a D1 `session`: **Enter as** sets HttpOnly `pt_session`; **Issue token** (`set_cookie: false`) returns the id for `Authorization: Bearer`. Same origin. App HTTP accepts cookie or Bearer (Bearer present → no cookie fallback). WS upgrade uses the cookie. Not the destination login. Distinct agent OAuth later.
-- Vectorize, R2, Chief-of-Staff agent, MCP OAuth, and room MCP are **named absences** until a version spec takes them. Catalog `/mcp` is live (Bearer façade: briefing, wiki/card search, Activity; still wraps catalog/wiki HTTP; node markdown in `content[0]`). Operators: `.grok/skills/using-projthread/SKILL.md`. Implementers: `docs/agent-facing.md`.
+- Vectorize, Chief-of-Staff agent, MCP OAuth, and room MCP are **named absences** until a version spec takes them. Catalog `/mcp` is live (Bearer façade: briefing, wiki/card search, Activity; still wraps catalog/wiki HTTP; node markdown **or json** in `content[0]`; blob caption + mime, not bytes). Operators: `.grok/skills/using-projthread/SKILL.md`. Implementers: `docs/agent-facing.md`.
 
 ## Free tier (do not drift)
 
@@ -81,13 +81,14 @@ Workers Free. Daily caps reset 00:00 UTC.
 | D1 | 10 DBs, 500 MB/DB, 5M reads/day, 100k writes/day | Catalog + work-item events. Not the chat log. |
 | Durable Objects | 100k requests/day (includes WS messages), 13k GB-s/day, 5 GB SQL | One DO per room. Hibernate idle sockets. Do not bill keystrokes as messages. |
 | Queues | 10k ops/day | n=1, only if a subscription matches. One queue (`NOTIFY`). |
+| R2 | 10 GB-month, 1M Class A, 10M Class B | One object per blob node (`BLOBS` / `projthread-blobs`). GET is Class B. No public bucket. |
 | Vectorize | Free-plan dimensions exist; do not bind yet | Full-text / structured filters first. |
 
 Do not add a binding until a feature earns it.
 
 ## Named absences
 
-MCP surface. Vectorize. R2 (including batched transcript checkpoint). Workers AI. KV. Google OAuth. Destination login / public signup. Chief of Staff bot. Agent load (paid plan). Agent digestion of rooms → nodes. **Channels**. **Child rooms** (`work_item.parent_id`). **Draggable non-modal windows**. WebRTC / voice. Subdomain-per-tenant. **Chores** (dotproj; do not port — that wound is why Palm exists). Palm integration.
+MCP surface. Vectorize. R2 transcript checkpoint. Workers AI. KV. Google OAuth. Destination login / public signup. Chief of Staff bot. Agent load (paid plan). Agent digestion of rooms → nodes. **Channels**. **Child rooms** (`work_item.parent_id`). **Draggable non-modal windows**. WebRTC / voice. Subdomain-per-tenant. **Chores** (dotproj; do not port — that wound is why Palm exists). Palm integration.
 
 ## Ancestors
 

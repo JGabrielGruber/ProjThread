@@ -33,7 +33,7 @@ export default {
     const notify = d1NotifyStore(env.DB);
 
     if (url.pathname === "/mcp") {
-      return handleMcp(request, env, store, catalog, wiki, ctx);
+      return handleMcp(request, env, store, catalog, wiki, ctx, notify);
     }
 
     if (url.pathname.startsWith("/api/admin")) {

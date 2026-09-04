@@ -17,6 +17,7 @@ import { COOKIE_NAME } from "../lib/cookies.ts";
 import { newId } from "../lib/id.ts";
 import type { Env } from "./env.ts";
 import { handleMcp } from "./mcp.ts";
+import { memoryNotifyStore } from "./notify.ts";
 import {
   type Principal,
   type SessionRow,
@@ -72,6 +73,10 @@ const TOOL_NAMES = [
   "project_rename",
   "project_reparent",
   "stages_replace",
+  "notify_list",
+  "notify_add",
+  "notify_set",
+  "notify_remove",
 ] as const;
 
 function memoryCatalog(): CatalogStore {
@@ -1589,5 +1594,121 @@ describe("handleMcp", () => {
       status: number;
     };
     assert.equal(err.status, 400);
+  });
+
+  it("notify_add returns secret once; list omits it; set and remove", async () => {
+    const { sessionId, sessions, catalog, wiki, bundle, principal } =
+      await memberContext();
+    await catalog.updateMembershipRole(
+      bundle.workspace.id,
+      principal.id,
+      "owner",
+    );
+    const notify = memoryNotifyStore();
+    const envWithQueue = {
+      ...env,
+      NOTIFY: { async send() {} },
+    };
+    const added = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "notify_add", {
+          url: "https://bot.example/hook",
+          kinds: ["node.created"],
+        }),
+        envWithQueue,
+        sessions,
+        catalog,
+        wiki,
+        undefined,
+        notify,
+      ),
+    );
+    assert.notEqual(added.isError, true);
+    const addedPayload = JSON.parse(added.content[0]?.text ?? "{}") as {
+      secret: string;
+      subscription: { id: string; url: string; secret?: string };
+    };
+    assert.match(addedPayload.secret, /^whsec_/);
+    assert.equal(addedPayload.subscription.url, "https://bot.example/hook");
+    assert.equal("secret" in addedPayload.subscription, false);
+
+    const listed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "notify_list", {}),
+        envWithQueue,
+        sessions,
+        catalog,
+        wiki,
+        undefined,
+        notify,
+      ),
+    );
+    assert.notEqual(listed.isError, true);
+    const listPayload = JSON.parse(listed.content[0]?.text ?? "{}") as {
+      subscriptions: { id: string; enabled: boolean; secret?: string }[];
+    };
+    assert.equal(listPayload.subscriptions.length, 1);
+    assert.equal("secret" in listPayload.subscriptions[0]!, false);
+
+    const set = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "notify_set", {
+          subscription_id: addedPayload.subscription.id,
+          enabled: false,
+        }),
+        envWithQueue,
+        sessions,
+        catalog,
+        wiki,
+        undefined,
+        notify,
+      ),
+    );
+    assert.notEqual(set.isError, true);
+    const afterSet = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "notify_list", {}),
+        envWithQueue,
+        sessions,
+        catalog,
+        wiki,
+        undefined,
+        notify,
+      ),
+    );
+    const afterSetPayload = JSON.parse(afterSet.content[0]?.text ?? "{}") as {
+      subscriptions: { enabled: boolean }[];
+    };
+    assert.equal(afterSetPayload.subscriptions[0]?.enabled, false);
+
+    const removed = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "notify_remove", {
+          subscription_id: addedPayload.subscription.id,
+        }),
+        envWithQueue,
+        sessions,
+        catalog,
+        wiki,
+        undefined,
+        notify,
+      ),
+    );
+    assert.notEqual(removed.isError, true);
+    const afterRemove = await toolResult(
+      await handleMcp(
+        callTool(sessionId, "notify_list", {}),
+        envWithQueue,
+        sessions,
+        catalog,
+        wiki,
+        undefined,
+        notify,
+      ),
+    );
+    const afterRemovePayload = JSON.parse(
+      afterRemove.content[0]?.text ?? "{}",
+    ) as { subscriptions: unknown[] };
+    assert.equal(afterRemovePayload.subscriptions.length, 0);
   });
 });

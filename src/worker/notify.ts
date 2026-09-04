@@ -1,5 +1,6 @@
 import type { NotifyKind } from "../lib/notify-kind.ts";
 import { parseKindsJson } from "../lib/notify-kind.ts";
+import { signStandardWebhook } from "../lib/standard-webhooks.ts";
 import type { D1Database } from "./env.ts";
 
 export type NotifyMessage = {
@@ -69,6 +70,56 @@ export async function enqueueIfMatch(
     node_id: node.id,
     workspace_id: node.workspace_id,
   });
+}
+
+export type NotifyQueueMessage = {
+  id: string;
+  timestamp: Date;
+  body: NotifyMessage;
+  ack(): void;
+  retry(): void;
+};
+
+export async function deliverNotifyBatch(
+  messages: NotifyQueueMessage[],
+  notify: NotifyStore,
+  post: typeof fetch = fetch,
+): Promise<void> {
+  for (const message of messages) {
+    const subs = await notify.listEnabledMatching(
+      message.body.workspace_id,
+      message.body.kind,
+    );
+    const body = JSON.stringify({
+      kind: message.body.kind,
+      node_id: message.body.node_id,
+      workspace_id: message.body.workspace_id,
+    });
+    let failed = false;
+    for (const sub of subs) {
+      try {
+        const signed = await signStandardWebhook({
+          id: message.id,
+          timestamp: Math.floor(message.timestamp.getTime() / 1000),
+          body,
+          secret: sub.secret,
+        });
+        const res = await post(sub.url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...signed.headers,
+          },
+          body,
+        });
+        if (res.status >= 500) failed = true;
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) message.retry();
+    else message.ack();
+  }
 }
 
 export function memoryNotifyStore(): NotifyStore {

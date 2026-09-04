@@ -5,6 +5,12 @@ import { d1CatalogStore } from "./catalog.ts";
 import type { Env } from "./env.ts";
 import { handleMe } from "./me.ts";
 import { handleMcp, type WorkerContext } from "./mcp.ts";
+import {
+  d1NotifyStore,
+  deliverNotifyBatch,
+  type NotifyMessage,
+} from "./notify.ts";
+import { handleNotify } from "./notify-http.ts";
 import { handleRoom } from "./room-http.ts";
 import { d1SessionStore } from "./session.ts";
 import {
@@ -24,6 +30,7 @@ export default {
     const store = d1SessionStore(env.DB);
     const catalog = d1CatalogStore(env.DB);
     const wiki = d1WikiStore(env.DB);
+    const notify = d1NotifyStore(env.DB);
 
     if (url.pathname === "/mcp") {
       return handleMcp(request, env, store, catalog, wiki, ctx);
@@ -47,7 +54,11 @@ export default {
       /^\/api\/workspaces\/[^/]+\/nodes$/.test(url.pathname) ||
       /^\/api\/work-items\/[^/]+\/nodes$/.test(url.pathname)
     ) {
-      return handleWiki(request, env, store, catalog, wiki);
+      return handleWiki(request, env, store, catalog, wiki, notify);
+    }
+
+    if (/^\/api\/workspaces\/[^/]+\/notify-subscriptions(?:\/[^/]+)?$/.test(url.pathname)) {
+      return handleNotify(request, env, store, catalog, notify);
     }
 
     if (
@@ -73,5 +84,19 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  },
+  async queue(
+    batch: {
+      messages: {
+        id: string;
+        timestamp: Date;
+        body: NotifyMessage;
+        ack(): void;
+        retry(): void;
+      }[];
+    },
+    env: Env,
+  ) {
+    await deliverNotifyBatch(batch.messages, d1NotifyStore(env.DB));
   },
 };

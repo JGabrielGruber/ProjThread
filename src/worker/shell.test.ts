@@ -52,6 +52,8 @@ describe("isAppHistoryPath", () => {
   it("matches wiki, config, and one-segment room", () => {
     assert.equal(isAppHistoryPath("/wiki"), true);
     assert.equal(isAppHistoryPath("/config"), true);
+    assert.equal(isAppHistoryPath("/capture"), true);
+    assert.equal(isAppHistoryPath("/capture/extra"), false);
     assert.equal(isAppHistoryPath("/room/wi-1"), true);
     assert.equal(isAppHistoryPath("/room/wi-1/extra"), false);
     assert.equal(isAppHistoryPath("/"), false);
@@ -62,7 +64,7 @@ describe("isAppHistoryPath", () => {
 
 describe("handleAppShell", () => {
   it("rewrites history paths to /index.html", async () => {
-    for (const path of ["/wiki", "/config", "/room/wi-1"]) {
+    for (const path of ["/wiki", "/config", "/capture", "/room/wi-1"]) {
       const { env, fetched } = fakeEnv();
       const res = await handleAppShell(new Request(`${ORIGIN}${path}`), env);
       assert.equal(res.status, 200);

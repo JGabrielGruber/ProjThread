@@ -26,7 +26,13 @@ export async function handleAdminShell(
 }
 
 export function isAppHistoryPath(pathname: string): boolean {
-  if (pathname === "/wiki" || pathname === "/config") return true;
+  if (
+    pathname === "/wiki" ||
+    pathname === "/config" ||
+    pathname === "/capture"
+  ) {
+    return true;
+  }
   const parts = pathname.split("/").filter(Boolean);
   return parts.length === 2 && parts[0] === "room" && parts[1].length > 0;
 }

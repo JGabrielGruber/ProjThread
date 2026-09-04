@@ -4,6 +4,7 @@ import { createRouter, createWebHistory } from "vue-router";
 export const APP_ROUTES = [
   { name: "kanban", path: "/" },
   { name: "wiki", path: "/wiki" },
+  { name: "capture", path: "/capture" },
   { name: "config", path: "/config" },
   { name: "room", path: "/room/:itemId" },
 ] as const;
@@ -20,6 +21,11 @@ export const router = createRouter({
       name: "wiki",
       path: "/wiki",
       component: defineAsyncComponent(() => import("./pages/WikiPage.vue")),
+    },
+    {
+      name: "capture",
+      path: "/capture",
+      component: defineAsyncComponent(() => import("./pages/CapturePage.vue")),
     },
     {
       name: "config",

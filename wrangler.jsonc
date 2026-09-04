@@ -13,6 +13,7 @@
       "/admin/*",
       "/wiki",
       "/config",
+      "/capture",
       "/room/*"
     ]
   },

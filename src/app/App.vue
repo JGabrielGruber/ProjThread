@@ -6,6 +6,7 @@ import PtButton from "./components/PtButton.vue";
 import PtField from "./components/PtField.vue";
 import Toast from "./components/Toast.vue";
 import { useBoardStore } from "./stores/board.ts";
+import { useCaptureStore } from "./stores/capture.ts";
 import { useConfigStore } from "./stores/config.ts";
 import { useRoomStore } from "./stores/room.ts";
 import { useSessionStore } from "./stores/session.ts";
@@ -16,6 +17,7 @@ const THEME_ORDER: ThemeMode[] = ["system", "dark", "light"];
 
 const session = useSessionStore();
 const board = useBoardStore();
+const capture = useCaptureStore();
 const room = useRoomStore();
 const wiki = useWikiStore();
 const config = useConfigStore();
@@ -91,6 +93,7 @@ async function onWorkspaceChange(id: string): Promise<void> {
 
 const kanbanNav = computed(() => route.name === "kanban");
 const wikiNav = computed(() => route.name === "wiki");
+const captureNav = computed(() => route.name === "capture");
 const configNav = computed(() => route.name === "config");
 
 const toast = computed(() => {
@@ -130,6 +133,13 @@ const toast = computed(() => {
     }
     return { message: "", tone: "info" as const };
   }
+  if (route.name === "capture") {
+    if (capture.status === "filing") return { message: "Filing", tone: "info" as const };
+    if (capture.status === "error") {
+      return { message: capture.message || "Could not file", tone: "error" as const };
+    }
+    return { message: "", tone: "info" as const };
+  }
   if (session.workspaceId) {
     if (board.status === "loading") return { message: "Loading", tone: "info" as const };
     if (board.status === "error") {
@@ -145,6 +155,10 @@ async function openBoard(): Promise<void> {
 
 async function openWiki(): Promise<void> {
   await router.replace({ name: "wiki" });
+}
+
+async function openCapture(): Promise<void> {
+  await router.replace({ name: "capture" });
 }
 
 async function openConfig(): Promise<void> {
@@ -213,6 +227,15 @@ async function openConfig(): Promise<void> {
           @click="openWiki"
         >
           Wiki
+        </button>
+        <button
+          type="button"
+          class="nav-btn"
+          :class="{ 'is-active': captureNav }"
+          :aria-current="captureNav ? 'page' : undefined"
+          @click="openCapture"
+        >
+          Capture
         </button>
         <button
           type="button"

@@ -144,12 +144,12 @@ Do not implement this spec in one run. Each row is its own plan in `docs/STATUS.
 | --- | --- | --- | --- |
 | **19** | `payload_kind=json` | Migration CHECK `markdown\|json\|blob`; POST/PATCH json; PWA JSON reader + source edit; MCP `payload_kind`. Blob still 400. | none |
 | **20** | `node_project` write | `POST /api/nodes/:id/projects` `{ project_id }` (idempotent like work-item attach); GET node includes `project_ids`; MCP wrap; PWA may stay read-filter only. | none |
-| **21** | Notify | D1 subscriptions; Queue producer on the four kinds; consumer doorbell; Config (not admin dump) to add X on Y,Z. n=1. | `NOTIFY` queue |
+| **21** | Notify | D1 subscriptions; Queue producer on the four kinds; consumer doorbell; Config (not admin dump) to add X on Y,Z. n=1. Plan: `docs/superpowers/plans/2026-09-04-projthread-notify.md`. | `NOTIFY` queue |
 | **22** | R2 + blob writes | Upload; PWA/extension preview-by-mime. | R2 |
 | **23** | Capture extension | Proper client. Project select/create. Report graph. Pristine chrome. | none new |
 | **24** | PWA share target | Manifest `share_target`; text/url landing route; files after 22. Same graph and project picker. SW still skips `/api/*` and WS. | none new |
 
-**19** is the first implementation plan: `docs/superpowers/plans/2026-09-03-projthread-payload-json.md`. **20:** `docs/superpowers/plans/2026-09-03-projthread-node-project.md`.
+**19** is the first implementation plan: `docs/superpowers/plans/2026-09-03-projthread-payload-json.md`. **20:** `docs/superpowers/plans/2026-09-03-projthread-node-project.md`. **21:** `docs/superpowers/plans/2026-09-04-projthread-notify.md`.
 
 Capture without 19 is a workaround. Capture without 20 cannot point a project without fake-attaching a card. Capture without 21 is a dump nobody wakes for. Capture without 22 can still ship **text+json** (extension and share-target text). Media/screenshots need 22.
 
